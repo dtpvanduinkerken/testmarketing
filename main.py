@@ -2,7 +2,6 @@ import io
 from datetime import datetime
 
 import pandas as pd
-import plotly.express as px
 import requests
 import streamlit as st
 
@@ -33,7 +32,7 @@ body,
     font-family:'sofia-pro',sans-serif;
 }
 
-/* VERBERG STREAMLIT ELEMENTEN */
+/* STREAMLIT */
 
 #MainMenu{
     visibility:hidden;
@@ -156,34 +155,6 @@ section[data-testid="stSidebar"] *{
         0 15px 35px rgba(8,68,34,0.1);
 }
 
-/* BUTTONS */
-
-div.stButton > button{
-    width:100%;
-    background:white;
-    color:#084422;
-    border:
-        2px solid rgba(8,68,34,0.1);
-    border-radius:22px;
-    padding:28px 20px;
-    text-align:left;
-    font-size:18px;
-    font-weight:700;
-    box-shadow:
-        0 8px 20px rgba(8,68,34,0.05);
-    min-height:100px;
-    transition:0.2s;
-}
-
-div.stButton > button:hover{
-    background:#084422;
-    color:white;
-    border:2px solid #084422;
-    transform:translateY(-4px);
-    box-shadow:
-        0 15px 35px rgba(8,68,34,0.15);
-}
-
 /* TITELS */
 
 .section-title{
@@ -198,50 +169,6 @@ div.stButton > button:hover{
 
 h1,h2,h3,h4{
     color:#084422;
-}
-
-/* CARDS */
-
-.feature-card{
-    background:white;
-    padding:25px;
-    border-radius:22px;
-    box-shadow:
-        0 8px 20px rgba(8,68,34,0.05);
-    border-left:4px solid #084422;
-    transition:0.2s;
-}
-
-.feature-card:hover{
-    transform:translateY(-4px);
-    box-shadow:
-        0 12px 30px rgba(8,68,34,0.1);
-}
-
-/* DIVIDER */
-
-.divider-line{
-    height:2px;
-    background:
-        linear-gradient(
-            90deg,
-            transparent,
-            #084422,
-            transparent
-        );
-    margin:40px 0;
-}
-
-/* FOOTER */
-
-.footer-info{
-    background:
-        rgba(8,68,34,0.05);
-    padding:30px;
-    border-radius:24px;
-    margin-top:50px;
-    text-align:center;
-    border-top:2px solid #084422;
 }
 
 </style>
@@ -285,8 +212,11 @@ def calculate_growth(current, previous):
 # =====================================================
 
 SOCIAL_SHEET = "1L-KVqx5Bg5Y18PiqncQLggX3oKpeMHtqmRnsmJ5Qziw"
+MEMBERS_SHEET = "1snBY34YPGix5KpgOQ45aq4obQpmHirEt9Pg9I8DrE_0"
+NEWSLETTER_SHEET = "1seQjiFaLzEm7PZ2vTDeylSZKEXGqDl6FHe2l1nVPnfg"
 
 FOLLOWERS_GID = "730161295"
+MEMBERS_GID = "0"
 
 # =====================================================
 # FOLLOWERS DATA
@@ -348,6 +278,58 @@ if not followers.empty:
         )
 
 # =====================================================
+# MEMBERS DATA
+# =====================================================
+
+members_url = (
+    f"https://docs.google.com/spreadsheets/d/"
+    f"{MEMBERS_SHEET}/export?format=csv&gid={MEMBERS_GID}"
+)
+
+members = load_csv(members_url)
+
+total_members = 0
+
+if not members.empty:
+    total_members = len(members)
+
+# =====================================================
+# NEWSLETTER DATA
+# =====================================================
+
+newsletter_url = (
+    f"https://opensheet.elk.sh/{NEWSLETTER_SHEET}/Sheet1"
+)
+
+try:
+    response = requests.get(newsletter_url, timeout=15)
+    newsletter = pd.DataFrame(response.json())
+except:
+    newsletter = pd.DataFrame()
+
+avg_open_rate = 0
+
+if not newsletter.empty:
+
+    newsletter.columns = (
+        newsletter.columns
+        .str.lower()
+        .str.strip()
+    )
+
+    if "open_rate" in newsletter.columns:
+
+        newsletter["open_rate"] = pd.to_numeric(
+            newsletter["open_rate"],
+            errors="coerce"
+        )
+
+        avg_open_rate = round(
+            newsletter["open_rate"].mean(),
+            1
+        )
+
+# =====================================================
 # HERO
 # =====================================================
 
@@ -368,8 +350,7 @@ st.markdown(f"""
     max-width:900px;
     line-height:1.8;
 ">
-Centraal overzicht van social media,
-members, nieuwsbrieven en marketingprestaties.
+Live overzicht van de belangrijkste marketing KPI's.
 </p>
 
 <p style="
@@ -392,6 +373,8 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+st.write("")
+
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
@@ -413,143 +396,13 @@ with col2:
 with col3:
 
     st.metric(
-        "Totale volgers",
-        f"{instagram_followers + facebook_followers:,}".replace(",", ".")
+        "Members",
+        f"{total_members:,}".replace(",", ".")
     )
 
 with col4:
 
     st.metric(
-        "Dashboard status",
-        "✅ Live"
+        "Gem. open rate",
+        f"{avg_open_rate:.1f}%"
     )
-
-# =====================================================
-# DASHBOARDS
-# =====================================================
-
-st.write("")
-st.write("")
-
-st.markdown(
-    '<div class="section-title">🎯 Dashboards</div>',
-    unsafe_allow_html=True
-)
-
-col1, col2 = st.columns(2)
-
-with col1:
-
-    st.button(
-        "📱 Social Media Dashboard",
-        use_container_width=True,
-        disabled=True
-    )
-
-with col2:
-
-    st.button(
-        "👥 Members Dashboard",
-        use_container_width=True,
-        disabled=True
-    )
-
-col3, col4 = st.columns(2)
-
-with col3:
-
-    st.button(
-        "✉️ Nieuwsbrief Dashboard",
-        use_container_width=True,
-        disabled=True
-    )
-
-with col4:
-
-    st.button(
-        "📅 Events Dashboard",
-        use_container_width=True,
-        disabled=True
-    )
-
-# =====================================================
-# GRAPH
-# =====================================================
-
-if not followers.empty:
-
-    st.markdown(
-        '<div class="divider-line"></div>',
-        unsafe_allow_html=True
-    )
-
-    st.markdown(
-        '<div class="section-title">📊 Volgers ontwikkeling</div>',
-        unsafe_allow_html=True
-    )
-
-    chart_df = followers.copy()
-
-    chart_df["date"] = pd.to_datetime(
-        chart_df["date"],
-        errors="coerce"
-    )
-
-    fig = px.line(
-        chart_df,
-        x="date",
-        y=[
-            "instagram_followers",
-            "facebook_followers"
-        ],
-        template="simple_white"
-    )
-
-    fig.update_layout(
-        height=500,
-        paper_bgcolor="white",
-        plot_bgcolor="#ffffff",
-        xaxis_title="",
-        yaxis_title="Volgers"
-    )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True
-    )
-
-# =====================================================
-# FOOTER
-# =====================================================
-
-st.markdown(
-    '<div class="divider-line"></div>',
-    unsafe_allow_html=True
-)
-
-st.markdown(f"""
-<div class="footer-info">
-
-<h3>📋 Dashboard informatie</h3>
-
-<p>
-Databronnen:
-Google Sheets API
-</p>
-
-<p>
-Hosting:
-Render Cloud
-</p>
-
-<p style="
-    margin-top:20px;
-    font-size:14px;
-    opacity:0.7;
-">
-Laatst bijgewerkt:
-{datetime.now().strftime('%d %B %Y om %H:%M')}
-</p>
-
-</div>
-""", unsafe_allow_html=True)
