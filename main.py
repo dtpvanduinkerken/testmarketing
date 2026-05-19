@@ -59,19 +59,14 @@ header{
 /* SIDEBAR */
 
 section[data-testid="stSidebar"]{
-    background:
-        linear-gradient(
-            180deg,
-            #084422 0%,
-            #0b5a33 100%
-        );
+    background:white;
     border-right:
-        1px solid rgba(255,255,255,0.08);
+        1px solid rgba(8,68,34,0.08);
     padding-top:25px;
 }
 
 section[data-testid="stSidebar"] *{
-    color:white !important;
+    color:#084422 !important;
 }
 
 /* STREAMLIT NAVIGATIE */
@@ -81,13 +76,13 @@ section[data-testid="stSidebar"] *{
 }
 
 [data-testid="stSidebarNav"]::before{
-    content:"📊 VDK Marketing";
+    content:"VDK Marketing";
     display:block;
     font-size:22px;
     font-weight:700;
     margin-bottom:30px;
     padding-left:10px;
-    color:white;
+    color:#084422;
 }
 
 [data-testid="stSidebarNav"] li{
@@ -95,9 +90,9 @@ section[data-testid="stSidebar"] *{
 }
 
 [data-testid="stSidebarNav"] a{
-    background:transparent !important;
+    background:#f8f8f8 !important;
     border:
-        1px solid rgba(255,255,255,0.12);
+        1px solid rgba(8,68,34,0.08);
     border-radius:14px;
     padding:12px 14px;
     transition:0.2s;
@@ -105,14 +100,14 @@ section[data-testid="stSidebar"] *{
 
 [data-testid="stSidebarNav"] a:hover{
     background:
-        rgba(255,255,255,0.08) !important;
+        rgba(8,68,34,0.06) !important;
     border:
-        1px solid rgba(255,255,255,0.25);
+        1px solid rgba(8,68,34,0.15);
 }
 
 [data-testid="stSidebarNav"] a[aria-current="page"]{
-    background:white !important;
-    color:#084422 !important;
+    background:#084422 !important;
+    color:white !important;
     font-weight:700;
 }
 
@@ -341,7 +336,7 @@ st.markdown(f"""
     font-size:64px;
     margin-bottom:16px;
 ">
-📊 VDK Marketing Dashboard
+VDK Marketing Dashboard
 </h1>
 
 <p style="
@@ -358,7 +353,7 @@ Live overzicht van de belangrijkste marketing KPI's.
     font-size:16px;
     opacity:0.85;
 ">
-📅 {datetime.now().strftime('%d %B %Y')}
+{datetime.now().strftime('%d %B %Y')}
 </p>
 
 </div>
