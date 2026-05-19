@@ -396,7 +396,7 @@ with col2:
 with col3:
 
     st.metric(
-        "Members",
+        "Nieuwe members 2026",
         f"{total_members:,}".replace(",", ".")
     )
 
