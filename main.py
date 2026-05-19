@@ -18,107 +18,6 @@ st.set_page_config(
 )
 
 # =====================================================
-# SIDEBAR NAVIGATION
-# =====================================================
-
-with st.sidebar:
-
-    st.markdown("""
-    <style>
-    .sidebar-title{
-        font-size:20px;
-        font-weight:600;
-        margin-bottom:20px;
-        padding-bottom:12px;
-        border-bottom:1px solid rgba(255,255,255,0.15);
-        opacity:0.95;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-    <div style="margin-bottom:40px; text-align:center;">
-        <div style="font-size:42px;">📊</div>
-        <div style="font-size:18px; font-weight:700;">
-            VDK Marketing
-        </div>
-        <div style="font-size:12px; opacity:0.7;">
-            Dashboard v2.0
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.divider()
-
-    st.markdown(
-        '<div class="sidebar-title">Dashboards</div>',
-        unsafe_allow_html=True
-    )
-
-    if st.button(
-        "🏠 Home",
-        use_container_width=True
-    ):
-        st.switch_page("main.py")
-
-    if st.button(
-        "📱 Social Media",
-        use_container_width=True
-    ):
-        st.switch_page("pages/social.py")
-
-    if st.button(
-        "👥 Members",
-        use_container_width=True
-    ):
-        st.switch_page("pages/members.py")
-
-    if st.button(
-        "✉️ Nieuwsbrief",
-        use_container_width=True
-    ):
-        st.switch_page("pages/newsletter.py")
-
-    if st.button(
-        "📅 Afspraken",
-        use_container_width=True
-    ):
-        st.switch_page("pages/events.py")
-
-    st.write("")
-    st.divider()
-    st.write("")
-
-    st.markdown(
-        '<div class="sidebar-title">Hulpmiddelen</div>',
-        unsafe_allow_html=True
-    )
-
-    if st.button(
-        "🔄 Vernieuwen gegevens",
-        use_container_width=True
-    ):
-        st.cache_data.clear()
-        st.rerun()
-
-    st.write("")
-    st.divider()
-
-    st.markdown("""
-    <div style="
-        font-size:12px;
-        opacity:0.65;
-        text-align:center;
-        margin-top:20px;
-        line-height:1.7;
-    ">
-        📦 Google Sheets koppeling<br>
-        🔄 Live synchronisatie<br>
-        ☁️ Hosted via Render
-    </div>
-    """, unsafe_allow_html=True)
-
-# =====================================================
 # STYLING
 # =====================================================
 
@@ -146,20 +45,6 @@ footer{
 
 header{
     visibility:hidden;
-}
-
-/* VERBERG DUBBELE NAVIGATIE */
-
-[data-testid="stSidebarNav"]{
-    display:none !important;
-}
-
-[data-testid="stSidebarNavItems"]{
-    display:none !important;
-}
-
-section[data-testid="stSidebar"] ul{
-    display:none !important;
 }
 
 /* PAGINA */
@@ -190,24 +75,46 @@ section[data-testid="stSidebar"] *{
     color:white !important;
 }
 
-section[data-testid="stSidebar"] button{
+/* STREAMLIT NAVIGATIE */
+
+[data-testid="stSidebarNav"]{
+    padding-top:20px;
+}
+
+[data-testid="stSidebarNav"]::before{
+    content:"📊 VDK Marketing";
+    display:block;
+    font-size:22px;
+    font-weight:700;
+    margin-bottom:30px;
+    padding-left:10px;
+    color:white;
+}
+
+[data-testid="stSidebarNav"] li{
+    margin-bottom:8px;
+}
+
+[data-testid="stSidebarNav"] a{
     background:transparent !important;
-    color:white !important;
     border:
-        1px solid rgba(255,255,255,0.12) !important;
-    border-radius:14px !important;
-    font-weight:500 !important;
-    font-size:15px !important;
-    padding:12px 16px !important;
-    margin-bottom:10px !important;
+        1px solid rgba(255,255,255,0.12);
+    border-radius:14px;
+    padding:12px 14px;
     transition:0.2s;
 }
 
-section[data-testid="stSidebar"] button:hover{
+[data-testid="stSidebarNav"] a:hover{
     background:
         rgba(255,255,255,0.08) !important;
     border:
-        1px solid rgba(255,255,255,0.25) !important;
+        1px solid rgba(255,255,255,0.25);
+}
+
+[data-testid="stSidebarNav"] a[aria-current="page"]{
+    background:white !important;
+    color:#084422 !important;
+    font-weight:700;
 }
 
 /* HERO */
@@ -378,8 +285,6 @@ def calculate_growth(current, previous):
 # =====================================================
 
 SOCIAL_SHEET = "1L-KVqx5Bg5Y18PiqncQLggX3oKpeMHtqmRnsmJ5Qziw"
-MEMBERS_SHEET = "1snBY34YPGix5KpgOQ45aq4obQpmHirEt9Pg9I8DrE_0"
-NEWSLETTER_SHEET = "1seQjiFaLzEm7PZ2vTDeylSZKEXGqDl6FHe2l1nVPnfg"
 
 FOLLOWERS_GID = "730161295"
 
@@ -520,7 +425,7 @@ with col4:
     )
 
 # =====================================================
-# DASHBOARD BUTTONS
+# DASHBOARDS
 # =====================================================
 
 st.write("")
@@ -535,37 +440,37 @@ col1, col2 = st.columns(2)
 
 with col1:
 
-    if st.button(
+    st.button(
         "📱 Social Media Dashboard",
-        use_container_width=True
-    ):
-        st.switch_page("pages/social.py")
+        use_container_width=True,
+        disabled=True
+    )
 
 with col2:
 
-    if st.button(
+    st.button(
         "👥 Members Dashboard",
-        use_container_width=True
-    ):
-        st.switch_page("pages/members.py")
+        use_container_width=True,
+        disabled=True
+    )
 
 col3, col4 = st.columns(2)
 
 with col3:
 
-    if st.button(
+    st.button(
         "✉️ Nieuwsbrief Dashboard",
-        use_container_width=True
-    ):
-        st.switch_page("pages/newsletter.py")
+        use_container_width=True,
+        disabled=True
+    )
 
 with col4:
 
-    if st.button(
+    st.button(
         "📅 Events Dashboard",
-        use_container_width=True
-    ):
-        st.switch_page("pages/events.py")
+        use_container_width=True,
+        disabled=True
+    )
 
 # =====================================================
 # GRAPH
