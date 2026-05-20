@@ -6,8 +6,6 @@ import requests
 import streamlit as st
 
 
-# Page config -------------------------------------------------------------
-
 st.set_page_config(
     page_title="VDK Marketing Dashboard",
     page_icon="📊",
@@ -15,8 +13,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-
-# Constants ---------------------------------------------------------------
 
 SOCIAL_SHEET = "1L-KVqx5Bg5Y18PiqncQLggX3oKpeMHtqmRnsmJ5Qziw"
 MEMBERS_SHEET = "1snBY34YPGix5KpgOQ45aq4obQpmHirEt9Pg9I8DrE_0"
@@ -26,10 +22,10 @@ FOLLOWERS_GID = "730161295"
 MEMBERS_GID = "0"
 
 BRAND_GREEN = "#084422"
-BACKGROUND = "#f4efe6"
+BACKGROUND = "#f7f3ec"
+CARD_BACKGROUND = "#ffffff"
+TEXT_MUTED = "#6f766f"
 
-
-# Styling -----------------------------------------------------------------
 
 def apply_styling() -> None:
     st.markdown(
@@ -42,6 +38,7 @@ def apply_styling() -> None:
         [data-testid="stAppViewContainer"] {{
             background: {BACKGROUND};
             font-family: 'sofia-pro', sans-serif;
+            color: {BRAND_GREEN};
         }}
 
         #MainMenu,
@@ -51,103 +48,109 @@ def apply_styling() -> None:
         }}
 
         .block-container {{
-            padding: 35px 55px 55px 55px;
-            max-width: 1800px;
+            padding: 42px 56px 56px 56px;
+            max-width: 1500px;
         }}
 
         section[data-testid="stSidebar"] {{
-            background: white;
-            border-right: 1px solid rgba(8, 68, 34, 0.08);
-            padding-top: 25px;
+            background: #ffffff;
+            border-right: 1px solid rgba(8, 68, 34, 0.06);
         }}
 
         section[data-testid="stSidebar"] * {{
             color: {BRAND_GREEN} !important;
         }}
 
-        [data-testid="stSidebarNav"] {{
-            padding-top: 20px;
-        }}
-
         [data-testid="stSidebarNav"]::before {{
             content: "VDK Marketing";
             display: block;
-            font-size: 22px;
-            font-weight: 700;
-            margin-bottom: 30px;
-            padding-left: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            margin: 12px 0 28px 10px;
             color: {BRAND_GREEN};
         }}
 
         [data-testid="stSidebarNav"] a {{
-            background: #f8f8f8 !important;
-            border: 1px solid rgba(8, 68, 34, 0.08);
-            border-radius: 14px;
-            padding: 12px 14px;
-            transition: 0.2s;
+            background: transparent !important;
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-weight: 500;
         }}
 
         [data-testid="stSidebarNav"] a:hover {{
-            background: rgba(8, 68, 34, 0.06) !important;
-            border: 1px solid rgba(8, 68, 34, 0.15);
+            background: rgba(8, 68, 34, 0.05) !important;
         }}
 
         [data-testid="stSidebarNav"] a[aria-current="page"] {{
-            background: {BRAND_GREEN} !important;
-            color: white !important;
+            background: rgba(8, 68, 34, 0.08) !important;
+            color: {BRAND_GREEN} !important;
             font-weight: 700;
         }}
 
         .hero {{
-            background: linear-gradient(135deg, {BRAND_GREEN} 0%, #0f5f33 100%);
-            padding: 60px;
-            border-radius: 34px;
-            color: white;
-            margin-bottom: 50px;
-            box-shadow: 0 12px 30px rgba(8, 68, 34, 0.15);
+            background: {CARD_BACKGROUND};
+            padding: 38px 42px;
+            border-radius: 22px;
+            color: {BRAND_GREEN};
+            margin-bottom: 38px;
+            border: 1px solid rgba(8, 68, 34, 0.08);
+            box-shadow: 0 8px 24px rgba(8, 68, 34, 0.04);
         }}
 
         .hero h1 {{
-            color: white;
-            font-size: 64px;
-            margin: 0 0 16px 0;
+            color: {BRAND_GREEN};
+            font-size: 42px;
+            line-height: 1.15;
+            margin: 0 0 10px 0;
+            font-weight: 700;
         }}
 
         .hero p {{
-            font-size: 20px;
-            opacity: 0.95;
-            max-width: 900px;
-            line-height: 1.8;
+            color: {TEXT_MUTED};
+            font-size: 17px;
+            max-width: 780px;
+            line-height: 1.6;
+            margin: 0;
         }}
 
         .hero .date {{
-            margin-top: 30px;
-            font-size: 16px;
-            opacity: 0.85;
+            margin-top: 22px;
+            font-size: 14px;
+            color: {TEXT_MUTED};
         }}
 
         [data-testid="stMetric"] {{
-            background: white;
-            padding: 28px;
-            border-radius: 24px;
-            border: 1px solid rgba(8, 68, 34, 0.05);
-            box-shadow: 0 10px 25px rgba(8, 68, 34, 0.05);
-            transition: 0.2s;
+            background: {CARD_BACKGROUND};
+            padding: 24px;
+            border-radius: 18px;
+            border: 1px solid rgba(8, 68, 34, 0.07);
+            box-shadow: 0 6px 18px rgba(8, 68, 34, 0.035);
         }}
 
-        [data-testid="stMetric"]:hover {{
-            transform: translateY(-2px);
-            box-shadow: 0 15px 35px rgba(8, 68, 34, 0.1);
+        [data-testid="stMetric"] label {{
+            color: {TEXT_MUTED} !important;
+            font-size: 14px !important;
+            font-weight: 500 !important;
+        }}
+
+        [data-testid="stMetricValue"] {{
+            color: {BRAND_GREEN};
+            font-size: 34px;
+            font-weight: 700;
+        }}
+
+        [data-testid="stMetricDelta"] {{
+            font-size: 14px;
+            font-weight: 600;
         }}
 
         .section-title {{
-            font-size: 28px;
+            font-size: 22px;
             font-weight: 700;
             color: {BRAND_GREEN};
-            margin-bottom: 25px;
-            padding-bottom: 12px;
-            border-bottom: 3px solid {BRAND_GREEN};
-            display: inline-block;
+            margin-bottom: 22px;
+            border-bottom: none;
+            display: block;
         }}
 
         h1, h2, h3, h4 {{
@@ -158,8 +161,6 @@ def apply_styling() -> None:
         unsafe_allow_html=True,
     )
 
-
-# Data helpers ------------------------------------------------------------
 
 @st.cache_data(ttl=600)
 def load_csv(url: str) -> pd.DataFrame:
@@ -205,8 +206,6 @@ def calculate_growth(current: float, previous: float) -> float:
 def format_number(value: int | float) -> str:
     return f"{value:,.0f}".replace(",", ".")
 
-
-# KPI calculations --------------------------------------------------------
 
 def get_followers_kpis() -> dict[str, float]:
     url = (
@@ -283,7 +282,6 @@ def get_average_open_rate() -> float:
 
     newsletter = clean_columns(newsletter)
 
-    # AANGEPAST VAN open_rate NAAR opens
     if "opens" not in newsletter.columns:
         st.warning("Kolom `opens` ontbreekt in nieuwsbriefdata.")
         return 0.0
@@ -296,8 +294,6 @@ def get_average_open_rate() -> float:
     return round(newsletter["opens"].mean(skipna=True), 1)
 
 
-# Layout ------------------------------------------------------------------
-
 def render_hero() -> None:
     today = datetime.now().strftime("%d-%m-%Y")
 
@@ -306,7 +302,7 @@ def render_hero() -> None:
         <div class="hero">
             <h1>VDK Marketing Dashboard</h1>
             <p>Live overzicht van de belangrijkste marketing KPI's.</p>
-            <p class="date">{today}</p>
+            <p class="date">Bijgewerkt op {today}</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -319,7 +315,7 @@ def render_kpis() -> None:
     average_open_rate = get_average_open_rate()
 
     st.markdown(
-        '<div class="section-title">📈 Snelle statistieken</div>',
+        '<div class="section-title">Snelle statistieken</div>',
         unsafe_allow_html=True,
     )
 
@@ -347,8 +343,6 @@ def render_kpis() -> None:
         f"{average_open_rate:.1f}",
     )
 
-
-# App ---------------------------------------------------------------------
 
 def main() -> None:
     apply_styling()
