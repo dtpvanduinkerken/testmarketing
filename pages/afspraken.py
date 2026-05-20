@@ -1,355 +1,373 @@
-import streamlit as st
+import io
+from datetime import datetime
+
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
+import requests
+import streamlit as st
+
 
 st.set_page_config(
     page_title="Afspraken",
     layout="wide",
 )
 
+
 STYLE = """
 <link rel="stylesheet" href="https://use.typekit.net/nap5xax.css">
 
 <style>
-
-html, body, [data-testid="stAppViewContainer"]{
-    background:#f6f1e7;
-    font-family:'sofia-pro', sans-serif;
+html, body, [data-testid="stAppViewContainer"] {
+    background: #f7f3ec;
+    font-family: 'sofia-pro', sans-serif;
+    color: #084422;
 }
 
-.block-container{
-    padding-top:30px;
-    padding-left:55px;
-    padding-right:55px;
-    padding-bottom:40px;
-    max-width:1700px;
+.block-container {
+    padding: 42px 56px 56px 56px;
+    max-width: 1500px;
 }
 
-.dashboard-title{
-    font-size:58px;
-    font-weight:700;
-    color:#084422;
+#MainMenu,
+footer,
+header {
+    visibility: hidden;
 }
 
-/* KPI CARDS */
-
-[data-testid="metric-container"]{
-    background:#ffffff;
-    border-radius:24px;
-    padding:22px;
-    box-shadow:0 8px 25px rgba(0,0,0,0.04);
-    border:none;
+.vdk-main-title {
+    font-size: 42px;
+    font-weight: 700;
+    color: #084422;
+    margin: 0;
+    line-height: 1.15;
 }
 
-[data-testid="metric-container"] label{
-    color:#8a8a8a !important;
-    font-size:14px !important;
+.vdk-date {
+    text-align: right;
+    color: #6f766f;
+    font-size: 14px;
+    margin-top: 16px;
 }
 
-[data-testid="metric-container"] [data-testid="stMetricValue"]{
-    color:#084422;
-    font-size:34px;
-    font-weight:700;
+.vdk-divider {
+    width: 100%;
+    height: 1px;
+    background: rgba(8, 68, 34, 0.08);
+    margin-top: 24px;
+    margin-bottom: 34px;
 }
 
-/* TABLE */
-
-thead tr th{
-    background-color:#084422 !important;
-    color:white !important;
+[data-testid="stMetric"] {
+    background: #ffffff;
+    padding: 22px;
+    border-radius: 18px;
+    border: 1px solid rgba(8, 68, 34, 0.07);
+    box-shadow: 0 6px 18px rgba(8, 68, 34, 0.035);
 }
 
-tbody tr:nth-child(even){
-    background-color:#f9f3e9;
+[data-testid="stMetric"] label {
+    color: #6f766f !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
 }
 
-tbody tr:hover{
-    background-color:#eef5ea;
+[data-testid="stMetricValue"] {
+    color: #084422;
+    font-size: 30px;
+    font-weight: 700;
 }
 
+[data-testid="stMetricDelta"] {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+div[data-testid="stPlotlyChart"],
+[data-testid="stDataFrame"] {
+    background: #ffffff;
+    border-radius: 18px !important;
+    overflow: hidden;
+    border: 1px solid rgba(8, 68, 34, 0.07);
+    box-shadow: 0 6px 18px rgba(8, 68, 34, 0.035);
+}
+
+h1, h2, h3, h4 {
+    color: #084422;
+}
+
+h3 {
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.space {
+    height: 34px;
+}
 </style>
 """
 
 st.markdown(STYLE, unsafe_allow_html=True)
 
-# =====================================================
-# HEADER
-# =====================================================
-
-col1, col2, col3 = st.columns([2,2,1])
-
-with col1:
-    st.title("Afspraken")
-
-with col3:
-    st.text(
-        f"{datetime.now().strftime('%d %B %Y')}"
-    )
-
-# =====================================================
-# SHEET
-# =====================================================
 
 SHEET_ID = "1ahFKg-OOJaczjYx2dt4USJzx54nCB4olWB-cWDp4yzA"
 
-OPEN_SHEET_URL = (
-    f"https://docs.google.com/spreadsheets/d/"
-    f"{SHEET_ID}/export?format=csv&gid=0"
+SHEET_URL = (
+    f"https://docs.google.com/spreadsheets/d/{SHEET_ID}"
+    "/export?format=csv&gid=0"
 )
 
-# =====================================================
-# DATA
-# =====================================================
 
-@st.cache_data(ttl=30)
-def load_data():
+def format_number(value: float | int) -> str:
+    if pd.isna(value):
+        return "-"
 
+    return f"{int(value):,}".replace(",", ".")
+
+
+@st.cache_data(ttl=300)
+def load_data() -> pd.DataFrame:
     try:
-        df = pd.read_csv(OPEN_SHEET_URL)
+        response = requests.get(SHEET_URL, timeout=20)
+        response.raise_for_status()
 
-    except Exception as exc:
-        st.error(f"Kan data niet laden: {exc}")
+        df = pd.read_csv(io.StringIO(response.text))
+        df.columns = df.columns.str.strip()
+
+        return df
+
+    except requests.RequestException as error:
+        st.error(f"Kan data niet laden: {error}")
         return pd.DataFrame()
 
-    # ===== KOLOMMEN OPSCHONEN =====
+    except Exception as error:
+        st.error(f"Onverwachte fout: {error}")
+        return pd.DataFrame()
 
-    df.columns = (
-        df.columns
-        .str.strip()
-    )
 
-    # ===== DATUM =====
+def clean_data(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    required_columns = {"Datum", "Is geannuleerd"}
+
+    if not required_columns.issubset(df.columns):
+        st.error("De kolommen `Datum` en `Is geannuleerd` ontbreken.")
+        return pd.DataFrame()
+
+    df = df.copy()
 
     df["Datum"] = pd.to_datetime(
         df["Datum"],
         dayfirst=True,
-        errors="coerce"
+        errors="coerce",
     )
-
-    # ===== ANNULERING =====
 
     df["Is geannuleerd"] = (
         df["Is geannuleerd"]
         .astype(str)
         .str.strip()
         .str.lower()
-        .map({
-            "ja": True,
-            "nee": False
-        })
+        .map(
+            {
+                "ja": True,
+                "nee": False,
+                "true": True,
+                "false": False,
+            }
+        )
         .fillna(False)
     )
 
     return df
 
-df = load_data()
 
-# =====================================================
-# KPI DATA
-# =====================================================
-
-if not df.empty:
-
-    total = len(df)
-
-    canceled = int(
-        df["Is geannuleerd"].sum()
-    )
-
-    cancel_rate = (
-        round((canceled / total) * 100, 1)
-        if total else 0
-    )
-
-    # ===== ALLEEN ACTIEVE AFSPRAKEN =====
-
+def prepare_weekly_data(df: pd.DataFrame) -> pd.DataFrame:
     df_active = (
         df[df["Is geannuleerd"] == False]
+        .dropna(subset=["Datum"])
         .copy()
     )
 
-    df_active = (
-        df_active[df_active["Datum"].notna()]
+    if df_active.empty:
+        return pd.DataFrame()
+
+    df_active["Week_start"] = (
+        df_active["Datum"]
+        - pd.to_timedelta(df_active["Datum"].dt.weekday, unit="d")
     )
 
-    latest_week = 0
-    growth = 0
+    weekly = (
+        df_active
+        .groupby("Week_start")
+        .size()
+        .reset_index(name="Aantal")
+        .sort_values("Week_start")
+    )
 
-    # =====================================================
-    # WEEK DATA
-    # =====================================================
+    weekly["Groei %"] = (
+        weekly["Aantal"]
+        .pct_change()
+        .mul(100)
+        .fillna(0)
+        .round(1)
+    )
 
-    if not df_active.empty:
+    weekly["Week_label"] = (
+        "Week "
+        + weekly["Week_start"].dt.isocalendar().week.astype(str)
+    )
 
-        df_active["Week_start"] = (
-            df_active["Datum"]
-            - pd.to_timedelta(
-                df_active["Datum"].dt.weekday,
-                unit="d"
-            )
-        )
+    return weekly
 
-        weekly = (
-            df_active
-            .groupby("Week_start")
-            .size()
-            .reset_index(name="Aantal")
-            .sort_values("Week_start")
-        )
 
-        weekly["Groei %"] = (
-            weekly["Aantal"]
-            .pct_change()
-            * 100
-        )
+def calculate_kpis(df: pd.DataFrame, weekly: pd.DataFrame) -> dict[str, float]:
+    total = len(df)
+    canceled = int(df["Is geannuleerd"].sum())
+    cancel_rate = round((canceled / total) * 100, 1) if total else 0
 
-        weekly["Groei %"] = (
-            weekly["Groei %"]
-            .fillna(0)
-            .round(1)
-        )
-
-        # ===== HUIDIGE WEEK =====
-
+    if weekly.empty:
+        latest_week = 0
+        growth = 0
+    else:
         current_week_start = (
             pd.Timestamp.today().normalize()
-            - pd.to_timedelta(
-                pd.Timestamp.today().weekday(),
-                unit="d"
-            )
+            - pd.to_timedelta(pd.Timestamp.today().weekday(), unit="d")
         )
 
-        current_week_data = weekly[
-            weekly["Week_start"]
-            == current_week_start
-        ]
+        current_week_data = weekly[weekly["Week_start"] == current_week_start]
 
-        if not current_week_data.empty:
-
-            latest_week = int(
-                current_week_data["Aantal"].iloc[0]
-            )
-
-            growth = float(
-                current_week_data["Groei %"].iloc[0]
-            )
-
+        if current_week_data.empty:
+            latest_week = int(weekly["Aantal"].iloc[-1])
+            growth = float(weekly["Groei %"].iloc[-1])
         else:
+            latest_week = int(current_week_data["Aantal"].iloc[0])
+            growth = float(current_week_data["Groei %"].iloc[0])
 
-            latest_week = int(
-                weekly["Aantal"].iloc[-1]
-            )
+    return {
+        "total": total,
+        "canceled": canceled,
+        "cancel_rate": cancel_rate,
+        "latest_week": latest_week,
+        "growth": growth,
+    }
 
-            growth = float(
-                weekly["Groei %"].iloc[-1]
-            )
 
-# =====================================================
-# KPI CARDS
-# =====================================================
+def apply_chart_style(fig, height: int = 420):
+    fig.update_layout(
+        height=height,
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        font=dict(
+            family="sofia-pro",
+            color="#084422",
+        ),
+        title_font_size=20,
+        margin=dict(l=30, r=30, t=40, b=40),
+    )
 
-col1, col2, col3, col4 = st.columns(4)
+    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(
+        showgrid=True,
+        gridcolor="#eef0ec",
+    )
 
-with col1:
-    st.metric(
+    return fig
+
+
+def render_header() -> None:
+    col1, _, col3 = st.columns([2, 2, 1])
+
+    with col1:
+        st.markdown(
+            '<div class="vdk-main-title">Afspraken dashboard</div>',
+            unsafe_allow_html=True,
+        )
+
+    with col3:
+        st.markdown(
+            f'<div class="vdk-date">{datetime.now().strftime("%d-%m-%Y")}</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('<div class="vdk-divider"></div>', unsafe_allow_html=True)
+
+
+def render_kpis(kpis: dict[str, float]) -> None:
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric(
         "Afspraken totaal",
-        f"{total:,}".replace(",", ".")
+        format_number(kpis["total"]),
     )
 
-with col2:
-    st.metric(
+    col2.metric(
         "Geannuleerd",
-        f"{canceled:,}".replace(",", ".")
+        format_number(kpis["canceled"]),
     )
 
-with col3:
-    st.metric(
+    col3.metric(
         "Annuleringsratio",
-        f"{cancel_rate}%"
+        f"{kpis['cancel_rate']:.1f}%",
     )
 
-with col4:
-    st.metric(
+    col4.metric(
         "Laatste week",
-        f"{latest_week:,}".replace(",", "."),
-        f"{growth}%"
+        format_number(kpis["latest_week"]),
+        f"{kpis['growth']:.1f}%",
     )
 
-# =====================================================
-# WEEK OVERZICHT
-# =====================================================
 
-st.divider()
+def render_week_chart(weekly: pd.DataFrame) -> None:
+    if weekly.empty:
+        st.info("Geen weekdata beschikbaar.")
+        return
 
-st.subheader("Week overzicht")
+    st.subheader("Week overzicht")
 
-if not df_active.empty:
-
-    weekly_display = weekly.copy()
-
-    weekly_display["Week_label"] = (
-        "Week "
-        + weekly_display["Week_start"]
-        .dt.isocalendar()
-        .week.astype(str)
-    )
-
-    fig_week = px.bar(
-        weekly_display,
+    fig = px.bar(
+        weekly,
         x="Week_label",
         y="Aantal",
         text="Aantal",
+        color_discrete_sequence=["#084422"],
     )
 
-    fig_week.update_traces(
-        marker_color="#084422",
+    fig.update_traces(
         textposition="outside",
-        hovertemplate=
-        "<b>%{x}</b><br>"
-        "Afspraken: %{y}<br>"
-        "Groei: %{customdata[0]}%<extra></extra>",
-        customdata=weekly_display[["Groei %"]]
+        hovertemplate=(
+            "<b>%{x}</b><br>"
+            "Afspraken: %{y}<br>"
+            "Groei: %{customdata[0]}%<extra></extra>"
+        ),
+        customdata=weekly[["Groei %"]],
     )
 
-    fig_week.update_layout(
-        height=420,
-        plot_bgcolor="#ffffff",
-        paper_bgcolor="#ffffff",
+    fig.update_layout(
         showlegend=False,
         xaxis_title="",
         yaxis_title="Aantal afspraken",
-        margin=dict(t=30, l=20, r=20, b=20),
-    )
-
-    fig_week.update_xaxes(
-        showgrid=False
-    )
-
-    fig_week.update_yaxes(
-        showgrid=True,
-        gridcolor="#ececf3"
     )
 
     st.plotly_chart(
-        fig_week,
-        use_container_width=True
+        apply_chart_style(fig),
+        use_container_width=True,
     )
 
-# =====================================================
-# AFDELINGEN DIAGRAM
-# =====================================================
 
-st.divider()
+def render_department_chart(df: pd.DataFrame) -> None:
+    df_active = (
+        df[df["Is geannuleerd"] == False]
+        .dropna(subset=["Datum"])
+        .copy()
+    )
 
-st.subheader("Afspraken per afdeling")
+    if df_active.empty or "Dienst-categorie" not in df_active.columns:
+        st.info("Geen afdelingsdata beschikbaar.")
+        return
 
-if (
-    not df_active.empty and
-    "Dienst-categorie" in df_active.columns
-):
+    st.subheader("Afspraken per afdeling")
 
-    afdeling_data = (
+    department_data = (
         df_active
         .groupby("Dienst-categorie")
         .size()
@@ -357,31 +375,64 @@ if (
         .sort_values("Aantal", ascending=False)
     )
 
-    fig_afdeling = px.pie(
-        afdeling_data,
+    fig = px.pie(
+        department_data,
         names="Dienst-categorie",
         values="Aantal",
-        hole=0.45
+        hole=0.55,
+        color_discrete_sequence=[
+            "#084422",
+            "#3f6b53",
+            "#7d9b88",
+            "#b6c5b9",
+            "#dfe7df",
+        ],
     )
 
-    fig_afdeling.update_traces(
+    fig.update_traces(
         textposition="inside",
         textinfo="percent+label",
-        hovertemplate=
-        "<b>%{label}</b><br>"
-        "Afspraken: %{value}<br>"
-        "Percentage: %{percent}<extra></extra>"
+        hovertemplate=(
+            "<b>%{label}</b><br>"
+            "Afspraken: %{value}<br>"
+            "Percentage: %{percent}<extra></extra>"
+        ),
     )
 
-    fig_afdeling.update_layout(
-        height=500,
-        paper_bgcolor="#ffffff",
-        plot_bgcolor="#ffffff",
+    fig.update_layout(
         showlegend=False,
-        margin=dict(t=30, l=20, r=20, b=20),
+        margin=dict(t=40, l=30, r=30, b=40),
     )
 
     st.plotly_chart(
-        fig_afdeling,
-        use_container_width=True
+        apply_chart_style(fig, height=500),
+        use_container_width=True,
     )
+
+
+def add_space() -> None:
+    st.markdown('<div class="space"></div>', unsafe_allow_html=True)
+
+
+def main() -> None:
+    df = clean_data(load_data())
+
+    if df.empty:
+        st.warning("Geen geldige afspraken-data beschikbaar.")
+        return
+
+    weekly = prepare_weekly_data(df)
+    kpis = calculate_kpis(df, weekly)
+
+    render_header()
+    render_kpis(kpis)
+
+    add_space()
+    render_week_chart(weekly)
+
+    add_space()
+    render_department_chart(df)
+
+
+if __name__ == "__main__":
+    main()
