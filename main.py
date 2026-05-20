@@ -283,8 +283,9 @@ def get_average_open_rate() -> float:
 
     newsletter = clean_columns(newsletter)
 
-    if "open_rate" not in newsletter.columns:
-        st.warning("Kolom `open_rate` ontbreekt in nieuwsbriefdata.")
+    # AANGEPAST VAN open_rate NAAR opens
+    if "opens" not in newsletter.columns:
+        st.warning("Kolom `opens` ontbreekt in nieuwsbriefdata.")
         return 0.0
 
     newsletter["opens"] = pd.to_numeric(
@@ -342,8 +343,8 @@ def render_kpis() -> None:
     )
 
     col4.metric(
-        "Gem. open rate",
-        f"{average_open_rate:.1f}%",
+        "Gem. opens",
+        f"{average_open_rate:.1f}",
     )
 
 
