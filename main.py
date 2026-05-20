@@ -287,12 +287,12 @@ def get_average_open_rate() -> float:
         st.warning("Kolom `open_rate` ontbreekt in nieuwsbriefdata.")
         return 0.0
 
-    newsletter["open_rate"] = pd.to_numeric(
-        newsletter["open_rate"],
+    newsletter["opens"] = pd.to_numeric(
+        newsletter["opens"],
         errors="coerce",
     )
 
-    return round(newsletter["open_rate"].mean(skipna=True), 1)
+    return round(newsletter["opens"].mean(skipna=True), 1)
 
 
 # Layout ------------------------------------------------------------------
