@@ -28,7 +28,6 @@ BRAND_GREEN = "#084422"
 BACKGROUND = "#f7f3ec"
 TEXT_MUTED = "#6f766f"
 CARD_BORDER = "rgba(8, 68, 34, 0.07)"
-SOFT_GREEN = "#7d9b88"
 SOFT_RED = "#c76f6f"
 
 
@@ -318,6 +317,7 @@ def clean_search(dataframe: pd.DataFrame) -> pd.DataFrame:
 def clean_pagespeed(dataframe: pd.DataFrame) -> pd.DataFrame:
     dataframe = normalize_columns(dataframe)
     dataframe = dataframe.rename(columns={"pagina": "page"})
+
     dataframe = convert_columns_to_numeric(
         dataframe,
         ["mobile_speed", "desktop_speed"],
@@ -368,6 +368,73 @@ def filter_by_period(
         (dataframe["date"].dt.date >= start_date)
         & (dataframe["date"].dt.date <= end_date)
     ]
+
+
+def get_selected_period(dataframes: list[pd.DataFrame]) -> tuple:
+    date_sources = [
+        dataframe
+        for dataframe in dataframes
+        if not dataframe.empty and "date" in dataframe.columns
+    ]
+
+    if not date_sources:
+        st.sidebar.info("Geen datumkolommen gevonden voor periodefilter.")
+        return None, None, "alle beschikbare data"
+
+    all_dates = pd.concat(
+        [dataframe["date"] for dataframe in date_sources],
+        ignore_index=True,
+    )
+
+    all_dates = pd.to_datetime(all_dates, errors="coerce").dropna()
+
+    min_date = all_dates.min().date()
+    max_date = all_dates.max().date()
+
+    period_label = st.sidebar.radio(
+        "Periode",
+        [
+            "Afgelopen 7 dagen",
+            "Afgelopen 30 dagen",
+            "Afgelopen 90 dagen",
+            "Alles",
+            "Aangepast",
+        ],
+        index=1,
+    )
+
+    if period_label == "Afgelopen 7 dagen":
+        start_date = (pd.Timestamp(max_date) - pd.Timedelta(days=6)).date()
+        end_date = max_date
+
+    elif period_label == "Afgelopen 30 dagen":
+        start_date = (pd.Timestamp(max_date) - pd.Timedelta(days=29)).date()
+        end_date = max_date
+
+    elif period_label == "Afgelopen 90 dagen":
+        start_date = (pd.Timestamp(max_date) - pd.Timedelta(days=89)).date()
+        end_date = max_date
+
+    elif period_label == "Alles":
+        start_date = min_date
+        end_date = max_date
+
+    else:
+        selected_period = st.sidebar.date_input(
+            "Aangepaste periode",
+            value=(min_date, max_date),
+            min_value=min_date,
+            max_value=max_date,
+        )
+
+        if isinstance(selected_period, tuple) and len(selected_period) == 2:
+            start_date, end_date = selected_period
+        else:
+            start_date, end_date = min_date, max_date
+
+    period_text = f"{start_date} t/m {end_date}"
+
+    return start_date, end_date, period_text
 
 
 def format_euro(value: float) -> str:
@@ -484,46 +551,16 @@ st.sidebar.markdown("## Van Duinkerken")
 st.sidebar.markdown("Website optimizations")
 st.sidebar.divider()
 
+start_date, end_date, period_text = get_selected_period(
+    [landing, products, search, pagespeed, funnel]
+)
 
-date_sources = [
-    dataframe
-    for dataframe in [landing, products, search, pagespeed, funnel]
-    if not dataframe.empty and "date" in dataframe.columns
-]
-
-if date_sources:
-    all_dates = pd.concat(
-        [dataframe["date"] for dataframe in date_sources],
-        ignore_index=True,
-    )
-
-    all_dates = pd.to_datetime(all_dates, errors="coerce").dropna()
-
-    min_date = all_dates.min().date()
-    max_date = all_dates.max().date()
-
-    selected_period = st.sidebar.date_input(
-        "Periode",
-        value=(min_date, max_date),
-        min_value=min_date,
-        max_value=max_date,
-    )
-
-    if isinstance(selected_period, tuple) and len(selected_period) == 2:
-        start_date, end_date = selected_period
-    else:
-        start_date, end_date = min_date, max_date
-
+if start_date is not None and end_date is not None:
     landing = filter_by_period(landing, start_date, end_date)
     products = filter_by_period(products, start_date, end_date)
     search = filter_by_period(search, start_date, end_date)
     pagespeed = filter_by_period(pagespeed, start_date, end_date)
     funnel = filter_by_period(funnel, start_date, end_date)
-
-    period_text = f"{start_date} t/m {end_date}"
-else:
-    st.sidebar.info("Geen datumkolommen gevonden voor periodefilter.")
-    period_text = "alle beschikbare data"
 
 
 minimum_sessions = st.sidebar.slider(
@@ -931,7 +968,13 @@ with tab_speed:
 
         speed_columns = [
             column
-            for column in ["date", "page", "mobile_speed", "desktop_speed", "speed_risk"]
+            for column in [
+                "date",
+                "page",
+                "mobile_speed",
+                "desktop_speed",
+                "speed_risk",
+            ]
             if column in speed_data.columns
         ]
 
