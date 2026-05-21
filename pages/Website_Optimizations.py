@@ -217,7 +217,14 @@ def clean_landing(dataframe: pd.DataFrame) -> pd.DataFrame:
 
     dataframe = convert_columns_to_numeric(
         dataframe,
-        ["sessions", "users", "transactions", "revenue", "conversion_rate", "bounce_rate"],
+        [
+            "sessions",
+            "users",
+            "transactions",
+            "revenue",
+            "conversion_rate",
+            "bounce_rate",
+        ],
     )
 
     if "date" in dataframe.columns:
@@ -229,7 +236,9 @@ def clean_landing(dataframe: pd.DataFrame) -> pd.DataFrame:
     if "sessions" not in dataframe.columns:
         dataframe["sessions"] = 0
 
-    dataframe["bounce_impact_score"] = dataframe["bounce_rate"] * dataframe["sessions"]
+    dataframe["bounce_impact_score"] = (
+        dataframe["bounce_rate"] * dataframe["sessions"]
+    )
 
     return dataframe
 
@@ -288,6 +297,9 @@ def clean_search(dataframe: pd.DataFrame) -> pd.DataFrame:
         ["searches", "users", "results", "conversions"],
     )
 
+    if "date" in dataframe.columns:
+        dataframe["date"] = pd.to_datetime(dataframe["date"], errors="coerce")
+
     for column in ["searches", "results", "conversions"]:
         if column not in dataframe.columns:
             dataframe[column] = 0
@@ -311,6 +323,9 @@ def clean_pagespeed(dataframe: pd.DataFrame) -> pd.DataFrame:
         ["mobile_speed", "desktop_speed"],
     )
 
+    if "date" in dataframe.columns:
+        dataframe["date"] = pd.to_datetime(dataframe["date"], errors="coerce")
+
     if "mobile_speed" in dataframe.columns:
         dataframe["speed_score"] = dataframe["mobile_speed"]
         dataframe["speed_risk"] = 100 - dataframe["mobile_speed"]
@@ -332,7 +347,27 @@ def clean_funnel(dataframe: pd.DataFrame) -> pd.DataFrame:
 
     dataframe = convert_columns_to_numeric(dataframe, ["count"])
 
+    if "date" in dataframe.columns:
+        dataframe["date"] = pd.to_datetime(dataframe["date"], errors="coerce")
+
     return dataframe
+
+
+def filter_by_period(
+    dataframe: pd.DataFrame,
+    start_date,
+    end_date,
+) -> pd.DataFrame:
+    if dataframe.empty or "date" not in dataframe.columns:
+        return dataframe
+
+    dataframe = dataframe.copy()
+    dataframe["date"] = pd.to_datetime(dataframe["date"], errors="coerce")
+
+    return dataframe[
+        (dataframe["date"].dt.date >= start_date)
+        & (dataframe["date"].dt.date <= end_date)
+    ]
 
 
 def format_euro(value: float) -> str:
@@ -416,14 +451,15 @@ def create_funnel_data(funnel: pd.DataFrame) -> pd.DataFrame:
     return funnel_data
 
 
-def render_header() -> None:
+def render_header(period_text: str) -> None:
     st.markdown(
-        """
+        f"""
         <div>
             <div class="vdk-main-title">Website optimizations</div>
             <div class="vdk-subtitle">
                 Vind pagina's, producten, zoekopdrachten, performanceproblemen
                 en funnelstappen met de grootste verbeterkans.
+                Periode: <strong>{period_text}</strong>.
             </div>
         </div>
         <div class="vdk-divider"></div>
@@ -447,6 +483,48 @@ with st.spinner("Optimalisatiedata laden..."):
 st.sidebar.markdown("## Van Duinkerken")
 st.sidebar.markdown("Website optimizations")
 st.sidebar.divider()
+
+
+date_sources = [
+    dataframe
+    for dataframe in [landing, products, search, pagespeed, funnel]
+    if not dataframe.empty and "date" in dataframe.columns
+]
+
+if date_sources:
+    all_dates = pd.concat(
+        [dataframe["date"] for dataframe in date_sources],
+        ignore_index=True,
+    )
+
+    all_dates = pd.to_datetime(all_dates, errors="coerce").dropna()
+
+    min_date = all_dates.min().date()
+    max_date = all_dates.max().date()
+
+    selected_period = st.sidebar.date_input(
+        "Periode",
+        value=(min_date, max_date),
+        min_value=min_date,
+        max_value=max_date,
+    )
+
+    if isinstance(selected_period, tuple) and len(selected_period) == 2:
+        start_date, end_date = selected_period
+    else:
+        start_date, end_date = min_date, max_date
+
+    landing = filter_by_period(landing, start_date, end_date)
+    products = filter_by_period(products, start_date, end_date)
+    search = filter_by_period(search, start_date, end_date)
+    pagespeed = filter_by_period(pagespeed, start_date, end_date)
+    funnel = filter_by_period(funnel, start_date, end_date)
+
+    period_text = f"{start_date} t/m {end_date}"
+else:
+    st.sidebar.info("Geen datumkolommen gevonden voor periodefilter.")
+    period_text = "alle beschikbare data"
+
 
 minimum_sessions = st.sidebar.slider(
     "Minimale sessies pagina's",
@@ -512,7 +590,7 @@ product_opportunities = (
 )
 
 
-render_header()
+render_header(period_text)
 
 metric_col1, metric_col2, metric_col3, metric_col4, metric_col5 = st.columns(5)
 
@@ -648,7 +726,7 @@ with tab_pages:
     st.subheader("Pagina's met optimalisatiekansen")
 
     if landing.empty:
-        st.warning("Geen landingpage-data gevonden.")
+        st.warning("Geen landingpage-data gevonden voor deze periode.")
     elif not {"landingpage", "sessions"}.issubset(landing.columns):
         st.warning("Landingpage-data mist `landingpage` of `sessions`.")
     else:
@@ -707,7 +785,7 @@ with tab_products:
     st.subheader("Producten met hoge views maar lage omzet")
 
     if products.empty:
-        st.warning("Geen productdata gevonden.")
+        st.warning("Geen productdata gevonden voor deze periode.")
     elif not {"itemname", "itemsviewed", "itemrevenue"}.issubset(products.columns):
         st.warning("Productdata mist `product`, `views` of `omzet`.")
     else:
@@ -764,7 +842,7 @@ with tab_search:
     st.subheader("Populaire zoektermen")
 
     if search.empty:
-        st.warning("Geen site-search data gevonden.")
+        st.warning("Geen site-search data gevonden voor deze periode.")
     elif not {"searchterm", "searches"}.issubset(search.columns):
         st.warning("Search-data mist `zoekterm` of `zoekopdrachten`.")
     else:
@@ -799,6 +877,7 @@ with tab_search:
         search_columns = [
             column
             for column in [
+                "date",
                 "searchterm",
                 "searches",
                 "users",
@@ -819,7 +898,7 @@ with tab_speed:
     st.subheader("Page speed")
 
     if pagespeed.empty:
-        st.warning("Geen page-speed data gevonden.")
+        st.warning("Geen page-speed data gevonden voor deze periode.")
     elif not {"page", "mobile_speed", "desktop_speed"}.issubset(pagespeed.columns):
         st.warning("Page-speed data mist `pagina`, `mobile_speed` of `desktop_speed`.")
     else:
@@ -850,8 +929,14 @@ with tab_speed:
             use_container_width=True,
         )
 
+        speed_columns = [
+            column
+            for column in ["date", "page", "mobile_speed", "desktop_speed", "speed_risk"]
+            if column in speed_data.columns
+        ]
+
         st.dataframe(
-            speed_data[["page", "mobile_speed", "desktop_speed", "speed_risk"]],
+            speed_data[speed_columns],
             use_container_width=True,
             hide_index=True,
         )
@@ -863,7 +948,7 @@ with tab_funnel:
     funnel_data = create_funnel_data(funnel)
 
     if funnel_data.empty:
-        st.warning("Geen bruikbare funneldata gevonden.")
+        st.warning("Geen bruikbare funneldata gevonden voor deze periode.")
     else:
         funnel_fig = px.funnel(
             funnel_data,
