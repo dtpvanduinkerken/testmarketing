@@ -1,9 +1,11 @@
 from google.analytics.data_v1beta import BetaAnalyticsDataClient
 from google.analytics.data_v1beta.types import RunReportRequest
 
-from google.oauth2 import service_account
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.oauth2.credentials import Credentials
 
 import pandas as pd
+import os
 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -18,6 +20,8 @@ SPREADSHEET_NAME = "VDK Website Dashboard"
 
 WORKSHEET_NAME = "channels"
 
+TOKEN_FILE = "token.json"
+
 # =====================================================
 # GA4 AUTH
 # =====================================================
@@ -26,10 +30,61 @@ SCOPES = [
     "https://www.googleapis.com/auth/analytics.readonly"
 ]
 
-credentials = service_account.Credentials.from_service_account_file(
-    "client_secret.json",
-    scopes=SCOPES
-)
+credentials = None
+
+# =====================================================
+# TOKEN CHECK
+# =====================================================
+
+print("🔍 TOKEN BESTAAT:", os.path.exists(TOKEN_FILE))
+
+# =====================================================
+# BESTAAND TOKEN LADEN
+# =====================================================
+
+if os.path.exists(TOKEN_FILE):
+
+    credentials = Credentials.from_authorized_user_file(
+        TOKEN_FILE,
+        SCOPES
+    )
+
+    print("✅ Bestaand token geladen")
+
+# =====================================================
+# NIEUWE LOGIN
+# =====================================================
+
+else:
+
+    print("🔐 Nieuwe Google login gestart")
+
+    flow = InstalledAppFlow.from_client_secrets_file(
+        "oauth.json",
+        SCOPES
+    )
+
+    credentials = flow.run_local_server(
+        port=8080,
+        access_type="offline",
+        prompt="consent"
+    )
+
+    with open(TOKEN_FILE, "w") as token:
+
+        token.write(credentials.to_json())
+
+    print("✅ TOKEN.JSON opgeslagen")
+
+# =====================================================
+# DEBUG
+# =====================================================
+
+print("📁 HUIDIGE MAP:")
+print(os.getcwd())
+
+print("📄 BESTANDEN IN MAP:")
+print(os.listdir())
 
 # =====================================================
 # GA4 CLIENT
@@ -64,6 +119,8 @@ request = RunReportRequest(
             "end_date": "today"
         }
     ],
+
+    limit=500
 )
 
 response = client.run_report(request)
@@ -125,12 +182,12 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-creds = ServiceAccountCredentials.from_json_keyfile_name(
+sheet_creds = ServiceAccountCredentials.from_json_keyfile_name(
     "client_secret.json",
     scope
 )
 
-gs_client = gspread.authorize(creds)
+gs_client = gspread.authorize(sheet_creds)
 
 # =====================================================
 # GOOGLE SHEET OPENEN
@@ -158,6 +215,6 @@ data = [df.columns.tolist()] + df.values.tolist()
 
 worksheet.update(data)
 
-print("✅ Data succesvol geschreven!")
+print("✅ Channel data succesvol geschreven!")
 
 print(df.head())
