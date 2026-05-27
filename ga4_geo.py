@@ -15,6 +15,7 @@ import pandas as pd
 import gspread
 import os
 
+
 # =====================================================
 # CONFIG
 # =====================================================
@@ -23,11 +24,14 @@ PROPERTY_ID = "314034198"
 
 SPREADSHEET_NAME = "VDK Website Dashboard"
 
+WORKSHEET_NAME = "geo"
+
 TOKEN_FILE = "token.json"
 
 SCOPES = [
     "https://www.googleapis.com/auth/analytics.readonly"
 ]
+
 
 # =====================================================
 # TOKEN CHECK
@@ -36,6 +40,7 @@ SCOPES = [
 credentials = None
 
 print("🔍 TOKEN BESTAAT:", os.path.exists(TOKEN_FILE))
+
 
 # =====================================================
 # BESTAAND TOKEN LADEN
@@ -49,6 +54,7 @@ if os.path.exists(TOKEN_FILE):
     )
 
     print("✅ Bestaand token geladen")
+
 
 # =====================================================
 # NIEUWE LOGIN
@@ -75,6 +81,7 @@ else:
 
     print("✅ TOKEN.JSON opgeslagen")
 
+
 # =====================================================
 # DEBUG
 # =====================================================
@@ -85,6 +92,7 @@ print(os.getcwd())
 print("📄 BESTANDEN IN MAP:")
 print(os.listdir())
 
+
 # =====================================================
 # GA4 CLIENT
 # =====================================================
@@ -92,6 +100,7 @@ print(os.listdir())
 client = BetaAnalyticsDataClient(
     credentials=credentials
 )
+
 
 # =====================================================
 # REQUEST
@@ -124,6 +133,7 @@ request = RunReportRequest(
 
 response = client.run_report(request)
 
+
 # =====================================================
 # DATAFRAME
 # =====================================================
@@ -143,6 +153,18 @@ for row in response.rows:
 
 df = pd.DataFrame(rows)
 
+
+# =====================================================
+# GEEN DATA CHECK
+# =====================================================
+
+if df.empty:
+
+    print("⚠️ Geen geo data gevonden")
+
+    exit()
+
+
 # =====================================================
 # GOOGLE SHEETS LOGIN
 # =====================================================
@@ -161,28 +183,40 @@ gc = gspread.authorize(sheet_creds)
 
 sheet = gc.open(SPREADSHEET_NAME)
 
+
 # =====================================================
 # WORKSHEET
 # =====================================================
 
 try:
 
-    worksheet = sheet.worksheet("geo")
+    worksheet = sheet.worksheet(WORKSHEET_NAME)
 
 except:
 
     worksheet = sheet.add_worksheet(
-        title="geo",
+        title=WORKSHEET_NAME,
         rows=1000,
         cols=20
     )
 
+
+# =====================================================
+# SHEET LEEGMAKEN
+# =====================================================
+
 worksheet.clear()
+
+
+# =====================================================
+# DATA SCHRIJVEN
+# =====================================================
 
 worksheet.update(
     [df.columns.values.tolist()] +
     df.values.tolist()
 )
+
 
 # =====================================================
 # DONE

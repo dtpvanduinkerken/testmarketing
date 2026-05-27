@@ -10,6 +10,7 @@ import os
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+
 # =====================================================
 # CONFIG
 # =====================================================
@@ -22,6 +23,7 @@ WORKSHEET_NAME = "checkout_funnel"
 
 TOKEN_FILE = "token.json"
 
+
 # =====================================================
 # GA4 AUTH
 # =====================================================
@@ -32,11 +34,13 @@ SCOPES = [
 
 credentials = None
 
+
 # =====================================================
 # TOKEN CHECK
 # =====================================================
 
 print("🔍 TOKEN BESTAAT:", os.path.exists(TOKEN_FILE))
+
 
 # =====================================================
 # BESTAAND TOKEN LADEN
@@ -50,6 +54,7 @@ if os.path.exists(TOKEN_FILE):
     )
 
     print("✅ Bestaand token geladen")
+
 
 # =====================================================
 # NIEUWE LOGIN
@@ -76,6 +81,7 @@ else:
 
     print("✅ TOKEN.JSON opgeslagen")
 
+
 # =====================================================
 # DEBUG
 # =====================================================
@@ -86,6 +92,7 @@ print(os.getcwd())
 print("📄 BESTANDEN IN MAP:")
 print(os.listdir())
 
+
 # =====================================================
 # GA4 CLIENT
 # =====================================================
@@ -93,6 +100,7 @@ print(os.listdir())
 client = BetaAnalyticsDataClient(
     credentials=credentials
 )
+
 
 # =====================================================
 # GA4 REQUEST
@@ -118,9 +126,16 @@ request = RunReportRequest(
 
 response = client.run_report(request)
 
+
 # =====================================================
 # DATAFRAME
 # =====================================================
+
+if not response.rows:
+
+    print("⚠️ Geen data gevonden in GA4")
+
+    exit()
 
 row = response.rows[0]
 
@@ -131,6 +146,7 @@ add_to_carts = int(float(row.metric_values[1].value))
 checkouts = int(float(row.metric_values[2].value))
 
 aankopen = int(float(row.metric_values[3].value))
+
 
 funnel_data = pd.DataFrame([
     {
@@ -151,6 +167,7 @@ funnel_data = pd.DataFrame([
     }
 ])
 
+
 # =====================================================
 # GOOGLE SHEETS AUTH
 # =====================================================
@@ -167,6 +184,7 @@ sheet_creds = ServiceAccountCredentials.from_json_keyfile_name(
 
 gs_client = gspread.authorize(sheet_creds)
 
+
 # =====================================================
 # GOOGLE SHEET OPENEN
 # =====================================================
@@ -175,11 +193,13 @@ sheet = gs_client.open(SPREADSHEET_NAME)
 
 worksheet = sheet.worksheet(WORKSHEET_NAME)
 
+
 # =====================================================
 # SHEET LEEGMAKEN
 # =====================================================
 
 worksheet.clear()
+
 
 # =====================================================
 # DATA SCHRIJVEN
@@ -188,6 +208,11 @@ worksheet.clear()
 data = [funnel_data.columns.tolist()] + funnel_data.values.tolist()
 
 worksheet.update(data)
+
+
+# =====================================================
+# SUCCESS
+# =====================================================
 
 print("✅ Funnel data succesvol geschreven!")
 
