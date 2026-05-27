@@ -1,7 +1,7 @@
 from google.analytics.data_v1beta import BetaAnalyticsDataClient
 from google.analytics.data_v1beta.types import RunReportRequest
 
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google.oauth2 import service_account
 
 import pandas as pd
 
@@ -26,12 +26,10 @@ SCOPES = [
     "https://www.googleapis.com/auth/analytics.readonly"
 ]
 
-flow = InstalledAppFlow.from_client_secrets_file(
-    "oauth.json",
-    SCOPES
+credentials = service_account.Credentials.from_service_account_file(
+    "client_secret.json",
+    scopes=SCOPES
 )
-
-credentials = flow.run_local_server(port=8080)
 
 # =====================================================
 # GA4 CLIENT
