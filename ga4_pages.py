@@ -58,7 +58,11 @@ if not credentials:
         SCOPES
     )
 
-    credentials = flow.run_local_server(port=8080)
+    credentials = flow.run_local_server(
+        port=8080,
+        access_type="offline",
+        prompt="consent"
+    )
 
     with open(TOKEN_FILE, "w") as token:
 
