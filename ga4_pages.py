@@ -33,6 +33,12 @@ SCOPES = [
 credentials = None
 
 # =====================================================
+# TOKEN CHECK
+# =====================================================
+
+print("🔍 TOKEN BESTAAT:", os.path.exists(TOKEN_FILE))
+
+# =====================================================
 # BESTAAND TOKEN LADEN
 # =====================================================
 
@@ -45,11 +51,15 @@ if os.path.exists(TOKEN_FILE):
 
     print("✅ Bestaand token geladen")
 
+else:
+
+    print("❌ GEEN TOKEN GEVONDEN")
+
 # =====================================================
 # NIEUWE LOGIN
 # =====================================================
 
-if not credentials:
+if credentials is None:
 
     print("🔐 Nieuwe Google login gestart")
 
@@ -63,6 +73,8 @@ if not credentials:
         access_type="offline",
         prompt="consent"
     )
+
+    print("✅ LOGIN SUCCESVOL")
 
     with open(TOKEN_FILE, "w") as token:
 
