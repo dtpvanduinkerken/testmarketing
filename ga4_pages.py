@@ -1,9 +1,11 @@
 from google.analytics.data_v1beta import BetaAnalyticsDataClient
 from google.analytics.data_v1beta.types import RunReportRequest
 
-from google.oauth2 import service_account
+from google_auth_oauthlib.flow import InstalledAppFlow
 
 import pandas as pd
+import pickle
+import os
 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -26,10 +28,36 @@ SCOPES = [
     "https://www.googleapis.com/auth/analytics.readonly"
 ]
 
-credentials = service_account.Credentials.from_service_account_file(
-    "client_secret.json",
-    scopes=SCOPES
-)
+creds = None
+
+# =====================================================
+# BESTAANDE TOKEN LADEN
+# =====================================================
+
+if os.path.exists("token.pickle"):
+
+    with open("token.pickle", "rb") as token:
+
+        creds = pickle.load(token)
+
+# =====================================================
+# NIEUWE LOGIN ALS TOKEN NIET BESTAAT
+# =====================================================
+
+if not creds:
+
+    flow = InstalledAppFlow.from_client_secrets_file(
+        "oauth.json",
+        SCOPES
+    )
+
+    creds = flow.run_local_server(port=8080)
+
+    with open("token.pickle", "wb") as token:
+
+        pickle.dump(creds, token)
+
+credentials = creds
 
 # =====================================================
 # GA4 CLIENT
@@ -127,12 +155,12 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-creds = ServiceAccountCredentials.from_json_keyfile_name(
+sheet_creds = ServiceAccountCredentials.from_json_keyfile_name(
     "client_secret.json",
     scope
 )
 
-gs_client = gspread.authorize(creds)
+gs_client = gspread.authorize(sheet_creds)
 
 # =====================================================
 # GOOGLE SHEET OPENEN
