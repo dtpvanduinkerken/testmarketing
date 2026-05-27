@@ -1,9 +1,11 @@
 from google.analytics.data_v1beta import BetaAnalyticsDataClient
 from google.analytics.data_v1beta.types import RunReportRequest
 
-from google.oauth2 import service_account
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.oauth2.credentials import Credentials
 
 import pandas as pd
+import os
 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -16,7 +18,9 @@ PROPERTY_ID = "314034198"
 
 SPREADSHEET_NAME = "VDK Website Dashboard"
 
-WORKSHEET_NAME = "devices"
+WORKSHEET_NAME = "checkout_funnel"
+
+TOKEN_FILE = "token.json"
 
 # =====================================================
 # GA4 AUTH
@@ -26,10 +30,61 @@ SCOPES = [
     "https://www.googleapis.com/auth/analytics.readonly"
 ]
 
-credentials = service_account.Credentials.from_service_account_file(
-    "client_secret.json",
-    scopes=SCOPES
-)
+credentials = None
+
+# =====================================================
+# TOKEN CHECK
+# =====================================================
+
+print("🔍 TOKEN BESTAAT:", os.path.exists(TOKEN_FILE))
+
+# =====================================================
+# BESTAAND TOKEN LADEN
+# =====================================================
+
+if os.path.exists(TOKEN_FILE):
+
+    credentials = Credentials.from_authorized_user_file(
+        TOKEN_FILE,
+        SCOPES
+    )
+
+    print("✅ Bestaand token geladen")
+
+# =====================================================
+# NIEUWE LOGIN
+# =====================================================
+
+else:
+
+    print("🔐 Nieuwe Google login gestart")
+
+    flow = InstalledAppFlow.from_client_secrets_file(
+        "oauth.json",
+        SCOPES
+    )
+
+    credentials = flow.run_local_server(
+        port=8080,
+        access_type="offline",
+        prompt="consent"
+    )
+
+    with open(TOKEN_FILE, "w") as token:
+
+        token.write(credentials.to_json())
+
+    print("✅ TOKEN.JSON opgeslagen")
+
+# =====================================================
+# DEBUG
+# =====================================================
+
+print("📁 HUIDIGE MAP:")
+print(os.getcwd())
+
+print("📄 BESTANDEN IN MAP:")
+print(os.listdir())
 
 # =====================================================
 # GA4 CLIENT
@@ -46,16 +101,11 @@ client = BetaAnalyticsDataClient(
 request = RunReportRequest(
     property=f"properties/{PROPERTY_ID}",
 
-    dimensions=[
-        {"name": "date"},
-        {"name": "deviceCategory"},
-    ],
-
     metrics=[
-        {"name": "sessions"},
-        {"name": "activeUsers"},
+        {"name": "itemsViewed"},
+        {"name": "addToCarts"},
+        {"name": "checkouts"},
         {"name": "transactions"},
-        {"name": "totalRevenue"},
     ],
 
     date_ranges=[
@@ -63,7 +113,7 @@ request = RunReportRequest(
             "start_date": "30daysAgo",
             "end_date": "today"
         }
-    ],
+    ]
 )
 
 response = client.run_report(request)
@@ -72,49 +122,34 @@ response = client.run_report(request)
 # DATAFRAME
 # =====================================================
 
-rows = []
+row = response.rows[0]
 
-for row in response.rows:
+product_views = int(float(row.metric_values[0].value))
 
-    date = row.dimension_values[0].value
+add_to_carts = int(float(row.metric_values[1].value))
 
-    device = row.dimension_values[1].value
+checkouts = int(float(row.metric_values[2].value))
 
-    sessies = int(float(row.metric_values[0].value))
+aankopen = int(float(row.metric_values[3].value))
 
-    gebruikers = int(float(row.metric_values[1].value))
-
-    orders = int(float(row.metric_values[2].value))
-
-    omzet = round(float(row.metric_values[3].value), 2)
-
-    conversie = 0
-
-    if sessies > 0:
-        conversie = round((orders / sessies) * 100, 2)
-
-    rows.append({
-        "date": date,
-        "device": device,
-        "sessies": sessies,
-        "gebruikers": gebruikers,
-        "orders": orders,
-        "omzet": omzet,
-        "conversie": conversie,
-    })
-
-df = pd.DataFrame(rows)
-
-# =====================================================
-# DATUM FORMATTEREN
-# =====================================================
-
-df["date"] = pd.to_datetime(
-    df["date"],
-    format="%Y%m%d"
-)
-
-df["date"] = df["date"].dt.strftime("%Y-%m-%d")
+funnel_data = pd.DataFrame([
+    {
+        "stap": "Product bekeken",
+        "aantal": product_views
+    },
+    {
+        "stap": "Toegevoegd aan winkelwagen",
+        "aantal": add_to_carts
+    },
+    {
+        "stap": "Checkout gestart",
+        "aantal": checkouts
+    },
+    {
+        "stap": "Aankopen",
+        "aantal": aankopen
+    }
+])
 
 # =====================================================
 # GOOGLE SHEETS AUTH
@@ -125,12 +160,12 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-creds = ServiceAccountCredentials.from_json_keyfile_name(
+sheet_creds = ServiceAccountCredentials.from_json_keyfile_name(
     "client_secret.json",
     scope
 )
 
-gs_client = gspread.authorize(creds)
+gs_client = gspread.authorize(sheet_creds)
 
 # =====================================================
 # GOOGLE SHEET OPENEN
@@ -138,11 +173,7 @@ gs_client = gspread.authorize(creds)
 
 sheet = gs_client.open(SPREADSHEET_NAME)
 
-print("✅ Sheet gevonden")
-
 worksheet = sheet.worksheet(WORKSHEET_NAME)
-
-print("✅ Worksheet gevonden")
 
 # =====================================================
 # SHEET LEEGMAKEN
@@ -154,10 +185,10 @@ worksheet.clear()
 # DATA SCHRIJVEN
 # =====================================================
 
-data = [df.columns.tolist()] + df.values.tolist()
+data = [funnel_data.columns.tolist()] + funnel_data.values.tolist()
 
 worksheet.update(data)
 
-print("✅ Data succesvol geschreven!")
+print("✅ Funnel data succesvol geschreven!")
 
-print(df.head())
+print(funnel_data)
