@@ -11,6 +11,9 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
     steps:
 
       - name: Checkout repository
@@ -25,13 +28,14 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Create credentials file
+      - name: Create oauth file
         run: |
-          echo '${{ secrets.GOOGLE_CREDENTIALS }}' > client_secret.json
+          echo '${{ secrets.GOOGLE_CREDENTIALS }}' > oauth.json
+
+      - name: Show files
+        run: |
+          ls
 
       - name: Run update script
         run: |
-          python update_all.py
-- name: Create oauth file
-  run: |
-    echo '${{ secrets.GOOGLE_CREDENTIALS }}' > oauth.json
+          python3 update_all.py
