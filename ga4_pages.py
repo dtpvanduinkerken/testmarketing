@@ -4,8 +4,8 @@ from google.analytics.data_v1beta.types import RunReportRequest
 from google_auth_oauthlib.flow import InstalledAppFlow
 
 import pandas as pd
-import pickle
 import os
+import pickle
 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -31,7 +31,7 @@ SCOPES = [
 creds = None
 
 # =====================================================
-# BESTAANDE TOKEN LADEN
+# BESTAAND TOKEN LADEN
 # =====================================================
 
 if os.path.exists("token.pickle"):
@@ -40,11 +40,15 @@ if os.path.exists("token.pickle"):
 
         creds = pickle.load(token)
 
+        print("✅ Bestaand token geladen")
+
 # =====================================================
-# NIEUWE LOGIN ALS TOKEN NIET BESTAAT
+# NIEUWE LOGIN
 # =====================================================
 
 if not creds:
+
+    print("🔐 Nieuwe Google login gestart")
 
     flow = InstalledAppFlow.from_client_secrets_file(
         "oauth.json",
@@ -56,6 +60,8 @@ if not creds:
     with open("token.pickle", "wb") as token:
 
         pickle.dump(creds, token)
+
+    print("✅ TOKEN OPGESLAGEN")
 
 credentials = creds
 
@@ -189,5 +195,9 @@ data = [df.columns.tolist()] + df.values.tolist()
 worksheet.update(data)
 
 print("✅ Data succesvol geschreven!")
+
+# =====================================================
+# CONTROLE
+# =====================================================
 
 print(df.head())
