@@ -8,7 +8,7 @@ from google.analytics.data_v1beta.types import (
     Filter
 )
 
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google.oauth2 import service_account
 
 import pandas as pd
 import gspread
@@ -31,14 +31,14 @@ SCOPES = [
 # AUTH
 # =====================================================
 
-flow = InstalledAppFlow.from_client_secrets_file(
-    "oauth.json",
-    SCOPES
+credentials = service_account.Credentials.from_service_account_file(
+    "client_secret.json",
+    scopes=SCOPES
 )
 
-credentials = flow.run_local_server(port=8080)
-
-client = BetaAnalyticsDataClient(credentials=credentials)
+client = BetaAnalyticsDataClient(
+    credentials=credentials
+)
 
 # =====================================================
 # API REQUEST
@@ -48,7 +48,10 @@ request = RunReportRequest(
     property=f"properties/{PROPERTY_ID}",
 
     date_ranges=[
-        DateRange(start_date="30daysAgo", end_date="today")
+        DateRange(
+            start_date="30daysAgo",
+            end_date="today"
+        )
     ],
 
     dimensions=[
@@ -125,6 +128,7 @@ sheet = gs_client.open(SPREADSHEET_NAME)
 
 try:
     worksheet = sheet.worksheet(WORKSHEET_NAME)
+
 except:
     worksheet = sheet.add_worksheet(
         title=WORKSHEET_NAME,
@@ -140,4 +144,5 @@ worksheet.update(
 )
 
 print("✅ SEO data succesvol geschreven!")
+
 print(df.head())
