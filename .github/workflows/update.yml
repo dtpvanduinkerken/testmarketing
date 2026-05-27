@@ -32,3 +32,6 @@ jobs:
       - name: Run update script
         run: |
           python update_all.py
+- name: Create oauth file
+  run: |
+    echo '${{ secrets.GOOGLE_CREDENTIALS }}' > oauth.json
