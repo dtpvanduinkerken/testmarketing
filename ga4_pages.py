@@ -33,22 +33,15 @@ SCOPES = [
 credentials = None
 
 # =====================================================
-<<<<<<< HEAD
-# BESTAAND TOKEN LADEN
-=======
 # TOKEN CHECK
->>>>>>> b3c85e691f5e58d5cf8e2af58f1dec53136566d1
 # =====================================================
 
 print("🔍 TOKEN BESTAAT:", os.path.exists(TOKEN_FILE))
 
-<<<<<<< HEAD
-=======
 # =====================================================
 # BESTAAND TOKEN LADEN
 # =====================================================
 
->>>>>>> b3c85e691f5e58d5cf8e2af58f1dec53136566d1
 if os.path.exists(TOKEN_FILE):
 
     credentials = Credentials.from_authorized_user_file(
@@ -58,24 +51,17 @@ if os.path.exists(TOKEN_FILE):
 
     print("✅ Bestaand token geladen")
 
-<<<<<<< HEAD
-=======
 else:
 
     print("❌ GEEN TOKEN GEVONDEN")
 
->>>>>>> b3c85e691f5e58d5cf8e2af58f1dec53136566d1
 # =====================================================
 # NIEUWE LOGIN
 # =====================================================
 
 if credentials is None:
 
-<<<<<<< HEAD
-    print("🔐 Nieuwe login gestart")
-=======
     print("🔐 Nieuwe Google login gestart")
->>>>>>> b3c85e691f5e58d5cf8e2af58f1dec53136566d1
 
     flow = InstalledAppFlow.from_client_secrets_file(
         "oauth.json",
@@ -88,21 +74,13 @@ if credentials is None:
         prompt="consent"
     )
 
-<<<<<<< HEAD
-    print("✅ Login succesvol")
-=======
     print("✅ LOGIN SUCCESVOL")
->>>>>>> b3c85e691f5e58d5cf8e2af58f1dec53136566d1
 
     with open(TOKEN_FILE, "w") as token:
 
         token.write(credentials.to_json())
 
-<<<<<<< HEAD
-    print("✅ TOKEN.JSON opgeslagen")
-=======
     print("✅ TOKEN.JSON OPGESLAGEN")
->>>>>>> b3c85e691f5e58d5cf8e2af58f1dec53136566d1
 
 # =====================================================
 # DEBUG
@@ -111,11 +89,7 @@ if credentials is None:
 print("📁 HUIDIGE MAP:")
 print(os.getcwd())
 
-<<<<<<< HEAD
-print("📄 BESTANDEN:")
-=======
 print("📄 BESTANDEN IN MAP:")
->>>>>>> b3c85e691f5e58d5cf8e2af58f1dec53136566d1
 print(os.listdir())
 
 # =====================================================
