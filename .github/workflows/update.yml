@@ -30,7 +30,11 @@ jobs:
 
       - name: Create oauth file
         run: |
-          echo '${{ secrets.GOOGLE_CREDENTIALS }}' > oauth.json
+          echo '${{ secrets.OAUTH_JSON }}' > oauth.json
+
+      - name: Create service account file
+        run: |
+          echo '${{ secrets.GOOGLE_CREDENTIALS }}' > client_secret.json
 
       - name: Show files
         run: |
