@@ -6,7 +6,7 @@ from google.analytics.data_v1beta.types import (
     DateRange
 )
 
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google.oauth2 import service_account
 from oauth2client.service_account import ServiceAccountCredentials
 
 import pandas as pd
@@ -26,16 +26,12 @@ SCOPES = [
 ]
 
 # =====================================================
-# GOOGLE ANALYTICS LOGIN (OAUTH)
+# GOOGLE ANALYTICS LOGIN
 # =====================================================
 
-flow = InstalledAppFlow.from_client_secrets_file(
-    "oauth.json",
-    SCOPES
-)
-
-credentials = flow.run_local_server(
-    port=8090
+credentials = service_account.Credentials.from_service_account_file(
+    "client_secret.json",
+    scopes=SCOPES
 )
 
 # =====================================================
@@ -97,7 +93,7 @@ for row in response.rows:
 df = pd.DataFrame(rows)
 
 # =====================================================
-# GOOGLE SHEETS LOGIN (SERVICE ACCOUNT)
+# GOOGLE SHEETS LOGIN
 # =====================================================
 
 scope = [

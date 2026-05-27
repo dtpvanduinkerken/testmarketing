@@ -28,9 +28,15 @@ rows = []
 
 for url in URLS:
 
-    mobile_url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={url}&strategy=mobile&key={API_KEY}"
+    mobile_url = (
+        "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
+        f"?url={url}&strategy=mobile&key={API_KEY}"
+    )
 
-    desktop_url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={url}&strategy=desktop&key={API_KEY}"
+    desktop_url = (
+        "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
+        f"?url={url}&strategy=desktop&key={API_KEY}"
+    )
 
     mobile_response = requests.get(mobile_url).json()
 
@@ -38,9 +44,15 @@ for url in URLS:
 
     try:
 
-        mobile_score = mobile_response["lighthouseResult"]["categories"]["performance"]["score"] * 100
+        mobile_score = (
+            mobile_response["lighthouseResult"]["categories"]["performance"]["score"]
+            * 100
+        )
 
-        desktop_score = desktop_response["lighthouseResult"]["categories"]["performance"]["score"] * 100
+        desktop_score = (
+            desktop_response["lighthouseResult"]["categories"]["performance"]["score"]
+            * 100
+        )
 
         rows.append({
             "pagina": url,
@@ -48,8 +60,14 @@ for url in URLS:
             "desktop_speed": round(desktop_score),
         })
 
-    except:
+    except Exception as e:
+
         print(f"❌ Fout bij {url}")
+        print(e)
+
+# =====================================================
+# DATAFRAME
+# =====================================================
 
 df = pd.DataFrame(rows)
 
@@ -90,6 +108,10 @@ worksheet.clear()
 data = [df.columns.tolist()] + df.values.tolist()
 
 worksheet.update(data)
+
+# =====================================================
+# DONE
+# =====================================================
 
 print("✅ PageSpeed data succesvol geschreven!")
 

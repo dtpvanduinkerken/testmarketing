@@ -1,6 +1,11 @@
 from google.analytics.data_v1beta import BetaAnalyticsDataClient
-from google.analytics.data_v1beta.types import RunReportRequest, DateRange, Metric
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google.analytics.data_v1beta.types import (
+    RunReportRequest,
+    DateRange,
+    Metric
+)
+
+from google.oauth2 import service_account
 
 import pandas as pd
 import gspread
@@ -23,14 +28,14 @@ SCOPES = [
 # GOOGLE ANALYTICS AUTH
 # =====================================================
 
-flow = InstalledAppFlow.from_client_secrets_file(
-    "oauth.json",
-    SCOPES
+credentials = service_account.Credentials.from_service_account_file(
+    "client_secret.json",
+    scopes=SCOPES
 )
 
-credentials = flow.run_local_server(port=8080)
-
-client = BetaAnalyticsDataClient(credentials=credentials)
+client = BetaAnalyticsDataClient(
+    credentials=credentials
+)
 
 # =====================================================
 # FUNNEL DATA
@@ -49,13 +54,24 @@ for metric_id, label in funnel_metrics:
 
     request = RunReportRequest(
         property=f"properties/{PROPERTY_ID}",
-        date_ranges=[DateRange(start_date="30daysAgo", end_date="today")],
-        metrics=[Metric(name=metric_id)]
+        date_ranges=[
+            DateRange(
+                start_date="30daysAgo",
+                end_date="today"
+            )
+        ],
+        metrics=[
+            Metric(name=metric_id)
+        ]
     )
 
     response = client.run_report(request)
 
-    value = int(float(response.rows[0].metric_values[0].value))
+    value = int(
+        float(
+            response.rows[0].metric_values[0].value
+        )
+    )
 
     results.append({
         "stap": label,
@@ -92,6 +108,7 @@ sheet = gs_client.open(SPREADSHEET_NAME)
 
 try:
     worksheet = sheet.worksheet(WORKSHEET_NAME)
+
 except:
     worksheet = sheet.add_worksheet(
         title=WORKSHEET_NAME,
@@ -107,4 +124,5 @@ worksheet.update(
 )
 
 print("✅ Funnel data succesvol geschreven!")
+
 print(df)

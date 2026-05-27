@@ -33,10 +33,14 @@ SCOPES = [
 credentials = None
 
 # =====================================================
-# BESTAAND TOKEN LADEN
+# TOKEN CHECK
 # =====================================================
 
 print("🔍 TOKEN BESTAAT:", os.path.exists(TOKEN_FILE))
+
+# =====================================================
+# BESTAAND TOKEN LADEN
+# =====================================================
 
 if os.path.exists(TOKEN_FILE):
 
@@ -47,13 +51,17 @@ if os.path.exists(TOKEN_FILE):
 
     print("✅ Bestaand token geladen")
 
+else:
+
+    print("❌ GEEN TOKEN GEVONDEN")
+
 # =====================================================
 # NIEUWE LOGIN
 # =====================================================
 
 if credentials is None:
 
-    print("🔐 Nieuwe login gestart")
+    print("🔐 Nieuwe Google login gestart")
 
     flow = InstalledAppFlow.from_client_secrets_file(
         "oauth.json",
@@ -66,13 +74,13 @@ if credentials is None:
         prompt="consent"
     )
 
-    print("✅ Login succesvol")
+    print("✅ LOGIN SUCCESVOL")
 
     with open(TOKEN_FILE, "w") as token:
 
         token.write(credentials.to_json())
 
-    print("✅ TOKEN.JSON opgeslagen")
+    print("✅ TOKEN.JSON OPGESLAGEN")
 
 # =====================================================
 # DEBUG
@@ -81,7 +89,7 @@ if credentials is None:
 print("📁 HUIDIGE MAP:")
 print(os.getcwd())
 
-print("📄 BESTANDEN:")
+print("📄 BESTANDEN IN MAP:")
 print(os.listdir())
 
 # =====================================================
