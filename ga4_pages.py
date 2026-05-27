@@ -2,10 +2,10 @@ from google.analytics.data_v1beta import BetaAnalyticsDataClient
 from google.analytics.data_v1beta.types import RunReportRequest
 
 from google_auth_oauthlib.flow import InstalledAppFlow
+from google.oauth2.credentials import Credentials
 
 import pandas as pd
 import os
-import pickle
 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -20,6 +20,8 @@ SPREADSHEET_NAME = "VDK Website Dashboard"
 
 WORKSHEET_NAME = "pages"
 
+TOKEN_FILE = "token.json"
+
 # =====================================================
 # GA4 AUTH
 # =====================================================
@@ -28,25 +30,26 @@ SCOPES = [
     "https://www.googleapis.com/auth/analytics.readonly"
 ]
 
-creds = None
+credentials = None
 
 # =====================================================
 # BESTAAND TOKEN LADEN
 # =====================================================
 
-if os.path.exists("token.pickle"):
+if os.path.exists(TOKEN_FILE):
 
-    with open("token.pickle", "rb") as token:
+    credentials = Credentials.from_authorized_user_file(
+        TOKEN_FILE,
+        SCOPES
+    )
 
-        creds = pickle.load(token)
-
-        print("✅ Bestaand token geladen")
+    print("✅ Bestaand token geladen")
 
 # =====================================================
 # NIEUWE LOGIN
 # =====================================================
 
-if not creds:
+if not credentials:
 
     print("🔐 Nieuwe Google login gestart")
 
@@ -55,15 +58,13 @@ if not creds:
         SCOPES
     )
 
-    creds = flow.run_local_server(port=8080)
+    credentials = flow.run_local_server(port=8080)
 
-    with open("token.pickle", "wb") as token:
+    with open(TOKEN_FILE, "w") as token:
 
-        pickle.dump(creds, token)
+        token.write(credentials.to_json())
 
-    print("✅ TOKEN OPGESLAGEN")
-
-credentials = creds
+    print("✅ TOKEN.JSON OPGESLAGEN")
 
 # =====================================================
 # GA4 CLIENT
@@ -195,9 +196,5 @@ data = [df.columns.tolist()] + df.values.tolist()
 worksheet.update(data)
 
 print("✅ Data succesvol geschreven!")
-
-# =====================================================
-# CONTROLE
-# =====================================================
 
 print(df.head())
