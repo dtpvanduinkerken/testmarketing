@@ -483,6 +483,43 @@ def build_analysis_points(
                 f"({format_number(best_channel_views)} views)."
             )
 
+    if {"post_type", "views", "engagement"}.issubset(posts_df.columns):
+        post_type_stats = (
+            posts_df
+            .dropna(subset=["post_type"])
+            .groupby("post_type")
+            .agg(
+                gemiddelde_views=("views", "mean"),
+                gemiddelde_engagement=("engagement", "mean"),
+                totaal_posts=("post_type", "count"),
+            )
+        )
+
+        if not post_type_stats.empty:
+            best_views_type = post_type_stats["gemiddelde_views"].idxmax()
+            best_views_value = post_type_stats.loc[
+                best_views_type,
+                "gemiddelde_views",
+            ]
+
+            best_engagement_type = (
+                post_type_stats["gemiddelde_engagement"].idxmax()
+            )
+            best_engagement_value = post_type_stats.loc[
+                best_engagement_type,
+                "gemiddelde_engagement",
+            ]
+
+            points.append(
+                f"{best_views_type} werkt het beste voor bereik, met gemiddeld "
+                f"{format_number(best_views_value)} views per post."
+            )
+
+            points.append(
+                f"{best_engagement_type} zorgt voor de hoogste betrokkenheid, "
+                f"met gemiddeld {best_engagement_value:.1f}% engagement."
+            )
+
     if {"topic", "views"}.issubset(posts_df.columns):
         top_post = posts_df.sort_values("views", ascending=False).iloc[0]
 
@@ -629,8 +666,84 @@ def render_trend_chart(df: pd.DataFrame) -> None:
     st.plotly_chart(fig, use_container_width=True)
 
 
+def render_post_type_analysis(df: pd.DataFrame) -> None:
+    required_columns = {"post_type", "views", "engagement"}
+
+    if not required_columns.issubset(df.columns) or df.empty:
+        st.info(
+            "Voeg een kolom 'post_type' toe om prestaties per posttype "
+            "te analyseren."
+        )
+        return
+
+    analysis_df = (
+        df
+        .dropna(subset=["post_type"])
+        .groupby("post_type", as_index=False)
+        .agg(
+            gemiddelde_views=("views", "mean"),
+            gemiddelde_engagement=("engagement", "mean"),
+            totaal_posts=("post_type", "count"),
+        )
+        .sort_values("gemiddelde_views", ascending=False)
+    )
+
+    if analysis_df.empty:
+        return
+
+    fig = px.bar(
+        analysis_df,
+        x="post_type",
+        y="gemiddelde_views",
+        color="gemiddelde_engagement",
+        text="totaal_posts",
+        title="Prestaties per posttype",
+        color_continuous_scale=[
+            "#dfe7df",
+            "#7d9b88",
+            "#084422",
+        ],
+    )
+
+    fig.update_traces(
+        texttemplate="%{text} posts",
+        textposition="outside",
+    )
+
+    fig.update_layout(
+        height=430,
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        font=dict(family="sofia-pro", color="#084422"),
+        title_font_size=20,
+        coloraxis_colorbar_title="Engagement %",
+        xaxis_title="Posttype",
+        yaxis_title="Gemiddelde views",
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.dataframe(
+        analysis_df.assign(
+            gemiddelde_views=analysis_df["gemiddelde_views"].round(0),
+            gemiddelde_engagement=analysis_df["gemiddelde_engagement"].round(1),
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
 def render_tables(df: pd.DataFrame) -> None:
-    columns = ["topic", "likes", "views", "comments", "shares", "saves"]
+    columns = [
+        "topic",
+        "post_type",
+        "likes",
+        "views",
+        "comments",
+        "shares",
+        "saves",
+        "engagement",
+    ]
 
     instagram = df[df["channel"] == "Instagram"]
     facebook = df[df["channel"] == "Facebook"]
@@ -722,6 +835,9 @@ def main() -> None:
 
     add_space()
     render_trend_chart(filtered_posts_df)
+
+    add_space()
+    render_post_type_analysis(filtered_posts_df)
 
     add_space()
     render_tables(filtered_posts_df)
