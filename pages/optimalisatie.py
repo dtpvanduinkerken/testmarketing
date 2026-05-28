@@ -703,20 +703,23 @@ def render_goal_chart(kpis: dict[str, float]) -> None:
 def get_default_tasks() -> pd.DataFrame:
     return pd.DataFrame(
         [
-            ["Checkout", "Checkout rustiger vormgeven", "Open", "Hoog", "Hoog", "", "", "Aankoopratio"],
-            ["Checkout", "Overbodige informatie verwijderen", "Open", "Hoog", "Hoog", "", "", "Checkout start"],
-            ["Productpagina’s", "Sticky koopknop toevoegen op mobiel", "Open", "Hoog", "Hoog", "", "", "Add-to-cart"],
-            ["Productpagina’s", "USP’s toevoegen onder productprijs", "Open", "Midden", "Hoog", "", "", "Add-to-cart"],
-            ["Productpagina’s", "Reviews beter zichtbaar maken", "Open", "Midden", "Midden", "", "", "Add-to-cart"],
-            ["Snelheid", "Pagina’s met trage laadtijden verbeteren", "Open", "Hoog", "Hoog", "", "", "Add-to-cart"],
-            ["Snelheid", "Mobiele performance controleren", "Open", "Hoog", "Midden", "", "", "Aankoopratio"],
-            ["Categoriepagina’s", "Snelle keuze knoppen toevoegen", "Open", "Laag", "Midden", "", "", "Add-to-cart"],
-            ["Zoek & filter", "Belangrijkste filters prominenter tonen", "Open", "Midden", "Midden", "", "", "Add-to-cart"],
-            ["Analyse", "Wekelijkse controle conversie", "Bezig", "Hoog", "Midden", "", "", "Alle KPI’s"],
-            ["Analyse", "Resultaten evalueren na 1 maand", "Open", "Hoog", "Hoog", "", "", "Alle KPI’s"],
+            ["Checkout", "Checkout rustiger vormgeven", "Open", "Hoog", "Hoog", "", pd.NaT, "Aankoopratio"],
+            ["Checkout", "Overbodige informatie verwijderen", "Open", "Hoog", "Hoog", "", pd.NaT, "Checkout start"],
+            ["Productpagina’s", "Sticky koopknop toevoegen op mobiel", "Open", "Hoog", "Hoog", "", pd.NaT, "Add-to-cart"],
+            ["Productpagina’s", "USP’s toevoegen onder productprijs", "Open", "Midden", "Hoog", "", pd.NaT, "Add-to-cart"],
+            ["Productpagina’s", "Reviews beter zichtbaar maken", "Open", "Midden", "Midden", "", pd.NaT, "Add-to-cart"],
+            ["Snelheid", "Pagina’s met trage laadtijden verbeteren", "Open", "Hoog", "Hoog", "", pd.NaT, "Add-to-cart"],
+            ["Snelheid", "Mobiele performance controleren", "Open", "Hoog", "Midden", "", pd.NaT, "Aankoopratio"],
+            ["Categoriepagina’s", "Snelle keuze knoppen toevoegen", "Open", "Laag", "Midden", "", pd.NaT, "Add-to-cart"],
+            ["Zoek & filter", "Belangrijkste filters prominenter tonen", "Open", "Midden", "Midden", "", pd.NaT, "Add-to-cart"],
+            ["Analyse", "Wekelijkse controle conversie", "Bezig", "Hoog", "Midden", "", pd.NaT, "Alle KPI’s"],
+            ["Analyse", "Resultaten evalueren na 1 maand", "Open", "Hoog", "Hoog", "", pd.NaT, "Alle KPI’s"],
         ],
         columns=TASK_COLUMNS,
     )
+    tasks["Deadline"] = pd.to_datetime(tasks["Deadline"], errors="coerce")
+
+    return tasks
 
 
 # Main app --------------------------------------------------------------------
@@ -907,6 +910,11 @@ def main() -> None:
 
         if "tasks" not in st.session_state:
             st.session_state.tasks = get_default_tasks()
+        else:
+            st.session_state.tasks["Deadline"] = pd.to_datetime(
+                st.session_state.tasks["Deadline"],
+                errors="coerce",
+            )
 
         selected_status = st.selectbox(
             "Statusfilter",
