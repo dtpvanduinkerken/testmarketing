@@ -7,20 +7,11 @@ import requests
 import streamlit as st
 
 
-# -----------------------------------------------------------------------------
-# Page config
-# -----------------------------------------------------------------------------
-
 st.set_page_config(
     page_title="Pilotmonitor website optimalisatie",
     page_icon="📈",
     layout="wide",
 )
-
-
-# -----------------------------------------------------------------------------
-# Config
-# -----------------------------------------------------------------------------
 
 SHEET_ID = "1wiE1a6rjX7bV2dun-R33SdoHsf70XPrdrB957bA8zFo"
 BASE_URL = f"https://opensheet.elk.sh/{SHEET_ID}"
@@ -66,10 +57,6 @@ KPI_TARGETS = {
 }
 
 
-# -----------------------------------------------------------------------------
-# Style
-# -----------------------------------------------------------------------------
-
 st.markdown(
     """
     <style>
@@ -92,7 +79,6 @@ st.markdown(
         font-weight: 800;
         color: #084422;
         margin-bottom: 8px;
-        letter-spacing: -0.03em;
     }
 
     .dashboard-subtitle {
@@ -125,37 +111,30 @@ st.markdown(
         margin: 0;
     }
 
-    .status-good {
-        color: #084422;
-        background: rgba(125, 155, 136, 0.18);
+    .status-good,
+    .status-warning,
+    .status-bad {
         display: inline-block;
         padding: 6px 11px;
         border-radius: 999px;
         font-size: 12px;
         font-weight: 700;
         margin-bottom: 12px;
+    }
+
+    .status-good {
+        color: #084422;
+        background: rgba(125, 155, 136, 0.18);
     }
 
     .status-warning {
         color: #7a5b00;
         background: rgba(201, 166, 70, 0.22);
-        display: inline-block;
-        padding: 6px 11px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 700;
-        margin-bottom: 12px;
     }
 
     .status-bad {
         color: #8f3030;
         background: rgba(199, 111, 111, 0.18);
-        display: inline-block;
-        padding: 6px 11px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 700;
-        margin-bottom: 12px;
     }
 
     div[data-testid="stMetric"] {
@@ -170,10 +149,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
-# -----------------------------------------------------------------------------
-# Helpers
-# -----------------------------------------------------------------------------
 
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -286,12 +261,14 @@ def get_previous_period_data(df: pd.DataFrame, label: str) -> pd.DataFrame:
 def safe_sum(df: pd.DataFrame, column: str) -> float:
     if df.empty or column not in df.columns:
         return 0.0
+
     return float(df[column].sum())
 
 
 def safe_rate(numerator: float, denominator: float) -> float:
     if denominator <= 0:
         return 0.0
+
     return numerator / denominator * 100
 
 
@@ -342,6 +319,7 @@ def get_kpi_status(value: float, low: float, high: float) -> tuple[str, str]:
 
 def get_pilot_status(kpis: dict[str, float]) -> tuple[str, str, str]:
     statuses = []
+
     for key, config in KPI_TARGETS.items():
         status, _ = get_kpi_status(kpis[key], config["low"], config["high"])
         statuses.append(status)
@@ -350,15 +328,14 @@ def get_pilot_status(kpis: dict[str, float]) -> tuple[str, str, str]:
 
     if on_target == 3:
         return "Pilot op koers", "status-good", "Alle kern-KPI’s halen de ondergrens."
+
     if on_target == 2:
         return "Aandacht nodig", "status-warning", "Twee van de drie kern-KPI’s halen de ondergrens."
+
     return "Actie nodig", "status-bad", "Meerdere KPI’s liggen onder de gewenste bandbreedte."
 
 
-def make_funnel_data(
-    funnel: pd.DataFrame,
-    kpis: dict[str, float],
-) -> pd.DataFrame:
+def make_funnel_data(funnel: pd.DataFrame, kpis: dict[str, float]) -> pd.DataFrame:
     if not funnel.empty and {"Stap", "Aantal"}.issubset(funnel.columns):
         funnel_df = funnel.copy()
     else:
@@ -375,10 +352,12 @@ def make_funnel_data(
         )
 
     previous = funnel_df["Aantal"].shift(1)
+
     funnel_df["Conversie vorige stap"] = [
         100 if pd.isna(prev) else safe_rate(current, prev)
         for current, prev in zip(funnel_df["Aantal"], previous)
     ]
+
     funnel_df["Uitval absoluut"] = (previous - funnel_df["Aantal"]).fillna(0)
     funnel_df["Uitval vorige stap"] = 100 - funnel_df["Conversie vorige stap"]
 
@@ -436,19 +415,11 @@ def render_card(title: str, body: str, status_class: str | None = None) -> None:
         )
 
 
-# -----------------------------------------------------------------------------
-# Load data
-# -----------------------------------------------------------------------------
-
 with st.spinner("Dashboard laden..."):
     overview = clean_overview(load_sheet(SHEET_URLS["overview"]))
     funnel = clean_funnel(load_sheet(SHEET_URLS["funnel"]))
     pagespeed = clean_pagespeed(load_sheet(SHEET_URLS["pagespeed"]))
 
-
-# -----------------------------------------------------------------------------
-# Sidebar
-# -----------------------------------------------------------------------------
 
 st.sidebar.title("Website optimalisatie")
 st.sidebar.caption("Pilotmonitor")
@@ -467,6 +438,7 @@ st.sidebar.divider()
 st.sidebar.markdown("### Datakwaliteit")
 
 latest_date = "Onbekend"
+
 if not overview.empty and "date" in overview.columns:
     latest_date = overview["date"].max().strftime("%d-%m-%Y")
 
@@ -475,10 +447,6 @@ st.sidebar.caption(f"Overview-rijen: {len(overview)}")
 st.sidebar.caption(f"Funnel-rijen: {len(funnel)}")
 st.sidebar.caption(f"Pagespeed-rijen: {len(pagespeed)}")
 
-
-# -----------------------------------------------------------------------------
-# Calculations
-# -----------------------------------------------------------------------------
 
 overview_filtered = get_period_data(overview, period)
 previous_overview = get_previous_period_data(overview, period)
@@ -489,10 +457,6 @@ funnel_df = make_funnel_data(funnel, kpis)
 
 pilot_title, pilot_status_class, pilot_text = get_pilot_status(kpis)
 
-
-# -----------------------------------------------------------------------------
-# Header
-# -----------------------------------------------------------------------------
 
 st.markdown(
     """
@@ -505,10 +469,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
-# -----------------------------------------------------------------------------
-# Executive summary
-# -----------------------------------------------------------------------------
 
 summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
 
@@ -528,7 +488,7 @@ with summary_col3:
     render_card(
         "Conversie",
         (
-            f"Totale conversieratio: "
+            "Totale conversieratio: "
             f"<strong>{format_percent(kpis['conversion_rate'])}</strong>"
         ),
     )
@@ -542,16 +502,9 @@ with summary_col4:
 st.write("")
 
 
-# -----------------------------------------------------------------------------
-# KPI metrics
-# -----------------------------------------------------------------------------
-
 metric_col1, metric_col2, metric_col3 = st.columns(3)
-
-for col, (key, config) in zip(metric_col1, KPI_TARGETS.items()):
-    pass
-
 metric_cols = [metric_col1, metric_col2, metric_col3]
+
 for col, (key, config) in zip(metric_cols, KPI_TARGETS.items()):
     delta = kpis[key] - previous_kpis.get(key, 0)
     col.metric(
@@ -563,18 +516,10 @@ for col, (key, config) in zip(metric_cols, KPI_TARGETS.items()):
 st.write("")
 
 
-# -----------------------------------------------------------------------------
-# Tabs
-# -----------------------------------------------------------------------------
-
 tab_overview, tab_funnel, tab_speed, tab_actions, tab_effect = st.tabs(
     ["Beslisoverzicht", "Funnel", "Snelheid", "Acties", "Effectmeting"]
 )
 
-
-# -----------------------------------------------------------------------------
-# Tab: Overview
-# -----------------------------------------------------------------------------
 
 with tab_overview:
     col_left, col_right = st.columns([2, 1])
@@ -590,6 +535,7 @@ with tab_overview:
         )
 
         fig = go.Figure()
+
         for column, color in {
             "Nu": COLORS["green"],
             "Doel laag": COLORS["light_green"],
@@ -610,17 +556,22 @@ with tab_overview:
             yaxis_title="Percentage",
         )
 
-        st.plotly_chart(apply_plotly_layout(fig, 500), use_container_width=True)
+        st.plotly_chart(
+            apply_plotly_layout(fig, 500),
+            use_container_width=True,
+        )
 
     with col_right:
         st.markdown("### Grootste aandachtspunt")
         st.info(get_biggest_leak(funnel_df))
 
         st.markdown("### Aanbevolen focus")
+
         weakest_kpi = min(
             KPI_TARGETS.keys(),
             key=lambda key: kpis[key] / KPI_TARGETS[key]["low"],
         )
+
         st.warning(
             f"Prioriteer acties rond **{KPI_TARGETS[weakest_kpi]['label']}**. "
             "Deze KPI ligt relatief het verst van de doelondergrens af."
@@ -637,10 +588,6 @@ with tab_overview:
         )
 
 
-# -----------------------------------------------------------------------------
-# Tab: Funnel
-# -----------------------------------------------------------------------------
-
 with tab_funnel:
     st.subheader("Conversiefunnel")
 
@@ -651,7 +598,10 @@ with tab_funnel:
         color_discrete_sequence=[COLORS["green"]],
     )
 
-    st.plotly_chart(apply_plotly_layout(fig, 520), use_container_width=True)
+    st.plotly_chart(
+        apply_plotly_layout(fig, 520),
+        use_container_width=True,
+    )
 
     display_funnel = funnel_df.copy()
     display_funnel["Aantal"] = display_funnel["Aantal"].map(format_number)
@@ -665,12 +615,12 @@ with tab_funnel:
         "Uitval vorige stap"
     ].map(format_percent)
 
-    st.dataframe(display_funnel, use_container_width=True, hide_index=True)
+    st.dataframe(
+        display_funnel,
+        use_container_width=True,
+        hide_index=True,
+    )
 
-
-# -----------------------------------------------------------------------------
-# Tab: Speed
-# -----------------------------------------------------------------------------
 
 with tab_speed:
     st.subheader("Websitesnelheid")
@@ -681,6 +631,7 @@ with tab_speed:
         st.warning("Geen pagespeed data gevonden.")
     else:
         speed_data = pagespeed.sort_values("mobile_speed").copy()
+
         speed_data["mobiele_status"] = pd.cut(
             speed_data["mobile_speed"],
             bins=[-1, 49, 89, 100],
@@ -714,15 +665,20 @@ with tab_speed:
             barmode="group",
             color_discrete_sequence=[COLORS["red"], COLORS["green"]],
         )
+
         fig.update_layout(yaxis={"categoryorder": "total ascending"})
 
-        st.plotly_chart(apply_plotly_layout(fig, 620), use_container_width=True)
-        st.dataframe(speed_data, use_container_width=True, hide_index=True)
+        st.plotly_chart(
+            apply_plotly_layout(fig, 620),
+            use_container_width=True,
+        )
 
+        st.dataframe(
+            speed_data,
+            use_container_width=True,
+            hide_index=True,
+        )
 
-# -----------------------------------------------------------------------------
-# Tab: Actions
-# -----------------------------------------------------------------------------
 
 with tab_actions:
     st.subheader("Actieplanning")
@@ -765,21 +721,24 @@ with tab_actions:
     )
 
     visible_tasks = st.session_state.tasks.copy()
+
     if status_filter != "Alle":
         visible_tasks = visible_tasks[visible_tasks["Status"] == status_filter]
 
-    st.dataframe(visible_tasks, use_container_width=True, hide_index=True)
+    st.dataframe(
+        visible_tasks,
+        use_container_width=True,
+        hide_index=True,
+    )
 
-
-# -----------------------------------------------------------------------------
-# Tab: Effect
-# -----------------------------------------------------------------------------
 
 with tab_effect:
     st.subheader("Effectmeting")
 
     if previous_overview.empty:
-        st.info("Kies 7, 30 of 90 dagen om de huidige periode met de vorige periode te vergelijken.")
+        st.info(
+            "Kies 7, 30 of 90 dagen om de huidige periode met de vorige periode te vergelijken."
+        )
     else:
         effect_df = pd.DataFrame(
             {
@@ -790,8 +749,13 @@ with tab_effect:
                 ],
             }
         )
+
         effect_df["Conclusie"] = effect_df["Verschil pp"].apply(
-            lambda value: "Verbeterd" if value > 0 else "Gedaald" if value < 0 else "Gelijk"
+            lambda value: "Verbeterd"
+            if value > 0
+            else "Gedaald"
+            if value < 0
+            else "Gelijk"
         )
 
         fig = px.bar(
@@ -806,33 +770,50 @@ with tab_effect:
             },
             title="Huidige periode versus vorige periode",
         )
-        fig.add_hline(y=0, line_dash="dash", line_color="rgba(8,68,34,0.3)")
 
-        st.plotly_chart(apply_plotly_layout(fig, 500), use_container_width=True)
+        fig.add_hline(
+            y=0,
+            line_dash="dash",
+            line_color="rgba(8,68,34,0.3)",
+        )
+
+        st.plotly_chart(
+            apply_plotly_layout(fig, 500),
+            use_container_width=True,
+        )
 
         display_effect = effect_df.copy()
         display_effect["Verschil pp"] = display_effect["Verschil pp"].map(
             format_delta_pp
         )
-        st.dataframe(display_effect, use_container_width=True, hide_index=True)
+
+        st.dataframe(
+            display_effect,
+            use_container_width=True,
+            hide_index=True,
+        )
 
     if not overview.empty and "date" in overview.columns:
         weekly = overview.copy()
         weekly["week"] = weekly["date"].dt.to_period("W").astype(str)
+
         weekly = weekly.groupby("week", as_index=False).agg(
             sessies=("sessies", "sum"),
             add_to_carts=("add_to_carts", "sum"),
             checkout_start=("checkout_start", "sum"),
             aankopen=("aankopen", "sum"),
         )
+
         weekly["add_to_cart_rate"] = weekly.apply(
             lambda row: safe_rate(row["add_to_carts"], row["sessies"]),
             axis=1,
         )
+
         weekly["checkout_rate"] = weekly.apply(
             lambda row: safe_rate(row["checkout_start"], row["add_to_carts"]),
             axis=1,
         )
+
         weekly["purchase_rate"] = weekly.apply(
             lambda row: safe_rate(row["aankopen"], row["checkout_start"]),
             axis=1,
@@ -852,9 +833,17 @@ with tab_effect:
             color="KPI",
             markers=True,
             title="Wekelijkse ontwikkeling",
-            color_discrete_sequence=[COLORS["green"], COLORS["light_green"], COLORS["gold"]],
+            color_discrete_sequence=[
+                COLORS["green"],
+                COLORS["light_green"],
+                COLORS["gold"],
+            ],
         )
-        st.plotly_chart(apply_plotly_layout(fig, 520), use_container_width=True)
+
+        st.plotly_chart(
+            apply_plotly_layout(fig, 520),
+            use_container_width=True,
+        )
 
 
 st.caption("Van Duinkerken · Website optimalisatiepilot")
