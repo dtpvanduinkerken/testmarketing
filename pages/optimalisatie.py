@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import html
+from dataclasses import dataclass
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -10,8 +13,8 @@ import streamlit as st
 # Config ----------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="Website Optimalisatieplan",
-    page_icon="🛠️",
+    page_title="Pilotmonitor website optimalisatie",
+    page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -33,6 +36,7 @@ COLORS = {
     "soft_green": "#7d9b88",
     "soft_gold": "#c9a646",
     "soft_red": "#c76f6f",
+    "white": "#ffffff",
 }
 
 PERIOD_OPTIONS = {
@@ -42,13 +46,46 @@ PERIOD_OPTIONS = {
     "Alles": None,
 }
 
-KPI_TARGETS = pd.DataFrame(
-    {
-        "KPI": ["Add-to-cart", "Checkout start", "Aankoopratio"],
-        "Doel laag": [4, 35, 45],
-        "Doel hoog": [6, 50, 60],
-    }
-)
+KPI_CONFIG = {
+    "add_to_cart_rate": {
+        "label": "Add-to-cart",
+        "low": 4,
+        "high": 6,
+        "description": "Aandeel sessies dat leidt tot winkelwagenactie.",
+    },
+    "checkout_start_rate": {
+        "label": "Checkout start",
+        "low": 35,
+        "high": 50,
+        "description": "Aandeel winkelwagens dat doorgaat naar checkout.",
+    },
+    "purchase_rate": {
+        "label": "Aankoopratio",
+        "low": 45,
+        "high": 60,
+        "description": "Aandeel checkouts dat eindigt in aankoop.",
+    },
+}
+
+TASK_COLUMNS = [
+    "Onderdeel",
+    "Taak",
+    "Status",
+    "Prioriteit",
+    "Impact",
+    "Eigenaar",
+    "Deadline",
+    "KPI",
+]
+
+
+@dataclass(frozen=True)
+class PilotPeriod:
+    start_date: pd.Timestamp | None
+    end_date: pd.Timestamp | None
+    days_total: int
+    days_elapsed: int
+    days_remaining: int
 
 
 # Styling ---------------------------------------------------------------------
@@ -60,7 +97,7 @@ def inject_style() -> None:
         <style>
         html, body, [data-testid="stAppViewContainer"] {{
             background: {COLORS["background"]};
-            font-family: 'sofia-pro', sans-serif;
+            font-family: 'sofia-pro', Arial, sans-serif;
             color: {COLORS["brand_green"]};
         }}
 
@@ -73,18 +110,19 @@ def inject_style() -> None:
             visibility: hidden;
         }}
 
-        .vdk-main-title {{
+        .vdk-title {{
             font-size: 42px;
-            font-weight: 700;
+            font-weight: 750;
             color: {COLORS["brand_green"]};
             margin: 0;
+            letter-spacing: -0.02em;
         }}
 
         .vdk-subtitle {{
             color: {COLORS["text_muted"]};
             font-size: 15px;
             margin-top: 8px;
-            max-width: 950px;
+            max-width: 980px;
             line-height: 1.6;
         }}
 
@@ -93,7 +131,7 @@ def inject_style() -> None:
             height: 1px;
             background: rgba(8, 68, 34, 0.08);
             margin-top: 24px;
-            margin-bottom: 34px;
+            margin-bottom: 28px;
         }}
 
         [data-testid="stSidebar"] {{
@@ -102,7 +140,7 @@ def inject_style() -> None:
         }}
 
         [data-testid="stMetric"],
-        .insight-card,
+        .vdk-card,
         div[data-testid="stPlotlyChart"],
         [data-testid="stDataFrame"] {{
             background: #ffffff;
@@ -113,7 +151,7 @@ def inject_style() -> None:
         }}
 
         [data-testid="stMetric"] {{
-            padding: 22px;
+            padding: 20px;
         }}
 
         [data-testid="stMetric"] label {{
@@ -124,29 +162,53 @@ def inject_style() -> None:
         [data-testid="stMetricValue"] {{
             color: {COLORS["brand_green"]};
             font-size: 28px;
-            font-weight: 700;
+            font-weight: 750;
         }}
 
-        .insight-card {{
+        .vdk-card {{
             padding: 22px;
-            min-height: 145px;
+            min-height: 132px;
         }}
 
-        .insight-card h4 {{
+        .vdk-card h4 {{
             color: {COLORS["brand_green"]};
             margin: 0 0 8px 0;
-            font-size: 18px;
+            font-size: 17px;
         }}
 
-        .insight-card p {{
+        .vdk-card p {{
             color: {COLORS["text_muted"]};
             margin: 0;
             line-height: 1.55;
             font-size: 14px;
         }}
 
+        .status-pill {{
+            display: inline-block;
+            padding: 6px 11px;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 12px;
+            margin-bottom: 12px;
+        }}
+
+        .status-good {{
+            background: rgba(125, 155, 136, 0.18);
+            color: {COLORS["brand_green"]};
+        }}
+
+        .status-warning {{
+            background: rgba(201, 166, 70, 0.20);
+            color: #7a5b00;
+        }}
+
+        .status-bad {{
+            background: rgba(199, 111, 111, 0.18);
+            color: #8f3030;
+        }}
+
         .space {{
-            height: 34px;
+            height: 30px;
         }}
         </style>
         """,
@@ -188,6 +250,9 @@ def load_sheet(url: str) -> pd.DataFrame:
         data = response.json()
     except requests.RequestException as error:
         st.warning(f"Data kon niet worden geladen: {error}")
+        return pd.DataFrame()
+    except ValueError:
+        st.warning("De databron gaf geen geldige JSON terug.")
         return pd.DataFrame()
 
     if isinstance(data, dict):
@@ -246,20 +311,19 @@ def clean_pagespeed(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
     df = normalize_columns(df).rename(columns={"pagina": "page"})
-
     return clean_numeric_columns(df, ["mobile_speed", "desktop_speed"])
 
 
 def safe_sum(df: pd.DataFrame, column: str) -> float:
     if df.empty or column not in df.columns:
-        return 0
+        return 0.0
 
     return float(df[column].sum())
 
 
 def safe_rate(numerator: float, denominator: float) -> float:
     if denominator <= 0:
-        return 0
+        return 0.0
 
     return numerator / denominator * 100
 
@@ -268,8 +332,17 @@ def format_number(value: float) -> str:
     return f"{value:,.0f}".replace(",", ".")
 
 
+def format_currency(value: float) -> str:
+    return "€ " + f"{value:,.0f}".replace(",", ".")
+
+
 def format_percent(value: float) -> str:
     return f"{value:.1f}%".replace(".", ",")
+
+
+def format_delta_pp(value: float) -> str:
+    sign = "+" if value >= 0 else ""
+    return f"{sign}{value:.1f} pp".replace(".", ",")
 
 
 def get_period_data(df: pd.DataFrame, label: str) -> pd.DataFrame:
@@ -287,27 +360,79 @@ def get_period_data(df: pd.DataFrame, label: str) -> pd.DataFrame:
     return df[df["date"] >= start_date]
 
 
+def get_previous_period_data(df: pd.DataFrame, label: str) -> pd.DataFrame:
+    if df.empty or "date" not in df.columns or PERIOD_OPTIONS[label] is None:
+        return pd.DataFrame()
+
+    days = PERIOD_OPTIONS[label]
+    max_date = df["date"].max()
+    current_start = max_date - pd.Timedelta(days=days - 1)
+    previous_start = current_start - pd.Timedelta(days=days)
+
+    return df[(df["date"] >= previous_start) & (df["date"] < current_start)]
+
+
 def calculate_kpis(overview: pd.DataFrame) -> dict[str, float]:
     sessions = safe_sum(overview, "sessies")
     add_to_carts = safe_sum(overview, "add_to_carts")
     checkout_start = safe_sum(overview, "checkout_start")
     purchases = safe_sum(overview, "aankopen")
+    revenue = safe_sum(overview, "omzet")
 
     return {
         "sessions": sessions,
         "add_to_carts": add_to_carts,
         "checkout_start": checkout_start,
         "purchases": purchases,
+        "revenue": revenue,
         "add_to_cart_rate": safe_rate(add_to_carts, sessions),
         "checkout_start_rate": safe_rate(checkout_start, add_to_carts),
         "purchase_rate": safe_rate(purchases, checkout_start),
+        "conversion_rate": safe_rate(purchases, sessions),
     }
 
 
-def create_funnel_data(
-    overview: pd.DataFrame,
-    funnel: pd.DataFrame,
-) -> pd.DataFrame:
+def get_kpi_status(value: float, low: float, high: float) -> tuple[str, str]:
+    if value < low:
+        return "Onder doel", "status-bad"
+    if value <= high:
+        return "Op doel", "status-good"
+    return "Boven doel", "status-good"
+
+
+def get_pilot_health(kpis: dict[str, float]) -> tuple[str, str, str]:
+    statuses = [
+        get_kpi_status(kpis[key], config["low"], config["high"])[0]
+        for key, config in KPI_CONFIG.items()
+    ]
+    on_target = sum(status != "Onder doel" for status in statuses)
+
+    if on_target == 3:
+        return "Pilot ligt op koers", "status-good", "Alle kern-KPI’s halen de ondergrens."
+    if on_target == 2:
+        return "Pilot vraagt aandacht", "status-warning", "Twee van de drie kern-KPI’s liggen op of boven doel."
+    return "Pilot heeft actie nodig", "status-bad", "Meerdere kern-KPI’s liggen onder de gewenste bandbreedte."
+
+
+def create_pilot_period(df: pd.DataFrame) -> PilotPeriod:
+    if df.empty or "date" not in df.columns:
+        return PilotPeriod(None, None, 0, 0, 0)
+
+    start_date = df["date"].min()
+    end_date = df["date"].max()
+    days_total = max((end_date - start_date).days + 1, 1)
+    days_elapsed = days_total
+
+    return PilotPeriod(
+        start_date=start_date,
+        end_date=end_date,
+        days_total=days_total,
+        days_elapsed=days_elapsed,
+        days_remaining=0,
+    )
+
+
+def create_funnel_data(overview: pd.DataFrame, funnel: pd.DataFrame) -> pd.DataFrame:
     funnel_columns = {"view_item", "add_to_cart", "begin_checkout", "purchase"}
 
     if not funnel.empty and funnel_columns.issubset(funnel.columns):
@@ -345,14 +470,98 @@ def create_funnel_data(
 
     funnel_data = pd.DataFrame(data)
     previous_step = funnel_data["Aantal"].shift(1)
-
     funnel_data["Conversie vorige stap"] = [
         100 if pd.isna(previous) else safe_rate(current, previous)
         for current, previous in zip(funnel_data["Aantal"], previous_step)
     ]
     funnel_data["Uitval vorige stap"] = 100 - funnel_data["Conversie vorige stap"]
+    funnel_data["Uitval absoluut"] = (previous_step - funnel_data["Aantal"]).fillna(0)
 
     return funnel_data
+
+
+def find_biggest_funnel_leak(funnel_data: pd.DataFrame) -> dict[str, str | float]:
+    if funnel_data.empty or len(funnel_data) <= 1:
+        return {
+            "title": "Geen funnel-lek bepaald",
+            "description": "Er is nog onvoldoende funneldata beschikbaar.",
+        }
+
+    leak_data = funnel_data.iloc[1:].copy()
+    biggest = leak_data.sort_values("Uitval absoluut", ascending=False).iloc[0]
+
+    return {
+        "title": f"Grootste lek: {biggest['Stap']}",
+        "description": (
+            f"Hier vallen ongeveer {format_number(biggest['Uitval absoluut'])} "
+            f"gebruikers uit ten opzichte van de vorige stap "
+            f"({format_percent(biggest['Uitval vorige stap'])})."
+        ),
+    }
+
+
+def create_weekly_data(overview: pd.DataFrame) -> pd.DataFrame:
+    required_columns = {
+        "date",
+        "sessies",
+        "add_to_carts",
+        "checkout_start",
+        "aankopen",
+    }
+
+    if overview.empty or not required_columns.issubset(overview.columns):
+        return pd.DataFrame()
+
+    weekly = overview.copy()
+    weekly["week"] = weekly["date"].dt.to_period("W").astype(str)
+
+    weekly = (
+        weekly
+        .groupby("week", as_index=False)
+        .agg(
+            sessies=("sessies", "sum"),
+            add_to_carts=("add_to_carts", "sum"),
+            checkout_start=("checkout_start", "sum"),
+            aankopen=("aankopen", "sum"),
+            omzet=("omzet", "sum") if "omzet" in weekly.columns else ("aankopen", "sum"),
+        )
+    )
+
+    weekly["add_to_cart_rate"] = weekly.apply(
+        lambda row: safe_rate(row["add_to_carts"], row["sessies"]),
+        axis=1,
+    )
+    weekly["checkout_start_rate"] = weekly.apply(
+        lambda row: safe_rate(row["checkout_start"], row["add_to_carts"]),
+        axis=1,
+    )
+    weekly["purchase_rate"] = weekly.apply(
+        lambda row: safe_rate(row["aankopen"], row["checkout_start"]),
+        axis=1,
+    )
+
+    return weekly
+
+
+def create_effect_data(current_kpis: dict[str, float], previous_kpis: dict[str, float]) -> pd.DataFrame:
+    rows = []
+
+    for key, config in KPI_CONFIG.items():
+        current = current_kpis[key]
+        previous = previous_kpis.get(key, 0)
+        delta = current - previous
+
+        rows.append(
+            {
+                "KPI": config["label"],
+                "Vorige periode": previous,
+                "Huidige periode": current,
+                "Verschil pp": delta,
+                "Conclusie": "Verbeterd" if delta > 0 else "Gedaald" if delta < 0 else "Gelijk",
+            }
+        )
+
+    return pd.DataFrame(rows)
 
 
 # UI helpers ------------------------------------------------------------------
@@ -362,10 +571,7 @@ def apply_plotly_layout(fig: go.Figure, height: int = 430) -> go.Figure:
         height=height,
         paper_bgcolor="#ffffff",
         plot_bgcolor="#ffffff",
-        font={
-            "family": "Sofia Pro, Arial",
-            "color": COLORS["brand_green"],
-        },
+        font={"family": "Sofia Pro, Arial", "color": COLORS["brand_green"]},
         margin={"l": 30, "r": 30, "t": 55, "b": 35},
         hovermode="closest",
         legend={"orientation": "h", "y": 1.08, "x": 0},
@@ -381,11 +587,11 @@ def render_header() -> None:
     st.markdown(
         """
         <div>
-            <div class="vdk-main-title">Website optimalisatieplan</div>
+            <div class="vdk-title">Pilotmonitor website optimalisatie</div>
             <div class="vdk-subtitle">
-                Dashboard voor het monitoren van conversie, checkout-uitval,
-                websitesnelheid en voortgang van de optimalisaties gedurende
-                de testmaand.
+                Eén dashboard voor besluitvorming: ligt de pilot op koers,
+                waar zit de grootste conversielekkage en welke optimalisatie
+                verdient nu prioriteit?
             </div>
         </div>
         <div class="vdk-divider"></div>
@@ -398,11 +604,15 @@ def add_space() -> None:
     st.markdown('<div class="space"></div>', unsafe_allow_html=True)
 
 
-def render_insight_card(title: str, body: str) -> None:
+def render_card(title: str, body: str, status_class: str | None = None) -> None:
+    status = f'<span class="status-pill {status_class}">{title}</span>' if status_class else ""
+    heading = "" if status_class else f"<h4>{html.escape(title)}</h4>"
+
     st.markdown(
         f"""
-        <div class="insight-card">
-            <h4>{title}</h4>
+        <div class="vdk-card">
+            {status}
+            {heading}
             <p>{body}</p>
         </div>
         """,
@@ -410,41 +620,13 @@ def render_insight_card(title: str, body: str) -> None:
     )
 
 
-def get_default_tasks() -> pd.DataFrame:
-    return pd.DataFrame(
-        [
-            ["Algemeen", "Controle websitesnelheid uitvoeren", "Open"],
-            ["Algemeen", "Pagina’s met trage laadtijden in kaart brengen", "Open"],
-            ["Algemeen", "Verbeterpunten voor mobiel analyseren", "Open"],
-            ["Productpagina’s", "USP’s toevoegen onder productprijs", "Open"],
-            ["Productpagina’s", "Sticky koopknop toevoegen op mobiel", "Open"],
-            ["Productpagina’s", "Reviews beter zichtbaar maken", "Open"],
-            ["Checkout", "Checkout rustiger vormgeven", "Open"],
-            ["Checkout", "Overbodige informatie verwijderen", "Open"],
-            ["Checkout", "Mobiele checkout controleren", "Open"],
-            ["Categoriepagina’s", "Snelle keuze knoppen toevoegen", "Open"],
-            ["Zoek & filter", "Belangrijkste filters prominenter tonen", "Open"],
-            ["Zoek & filter", "Zoekresultaten controleren op relevantie", "Open"],
-            ["Analyse", "Wekelijkse controle conversie", "Open"],
-            ["Analyse", "Wekelijkse controle checkout uitval", "Open"],
-            ["Analyse", "Resultaten evalueren na 1 maand", "Open"],
-        ],
-        columns=["Onderdeel", "Taak", "Status"],
-    )
-
-
-# App -------------------------------------------------------------------------
-
-def main() -> None:
-    inject_style()
-
-    with st.spinner("Projectdata laden..."):
-        overview = clean_overview(load_sheet(SHEET_URLS["overview"]))
-        funnel = clean_funnel(load_sheet(SHEET_URLS["funnel"]))
-        pagespeed = clean_pagespeed(load_sheet(SHEET_URLS["pagespeed"]))
-
+def render_sidebar(
+    overview: pd.DataFrame,
+    funnel: pd.DataFrame,
+    pagespeed: pd.DataFrame,
+) -> str:
     st.sidebar.markdown("## Van Duinkerken")
-    st.sidebar.markdown("Website optimalisatie")
+    st.sidebar.markdown("Website optimalisatiepilot")
     st.sidebar.divider()
 
     period = st.sidebar.radio(
@@ -457,106 +639,188 @@ def main() -> None:
         st.cache_data.clear()
         st.rerun()
 
+    st.sidebar.divider()
+    st.sidebar.markdown("### Datakwaliteit")
+
+    latest_date = "Onbekend"
+    if not overview.empty and "date" in overview.columns:
+        latest_date = overview["date"].max().strftime("%d-%m-%Y")
+
+    st.sidebar.caption(f"Laatste datum: {latest_date}")
+    st.sidebar.caption(f"Overview-rijen: {len(overview)}")
+    st.sidebar.caption(f"Funnel-rijen: {len(funnel)}")
+    st.sidebar.caption(f"Pagespeed-rijen: {len(pagespeed)}")
+
+    return period
+
+
+def render_kpi_metrics(kpis: dict[str, float], previous_kpis: dict[str, float]) -> None:
+    columns = st.columns(3)
+
+    for column, (key, config) in zip(columns, KPI_CONFIG.items()):
+        delta = kpis[key] - previous_kpis.get(key, 0)
+        column.metric(
+            config["label"],
+            format_percent(kpis[key]),
+            format_delta_pp(delta),
+        )
+
+
+def render_goal_chart(kpis: dict[str, float]) -> None:
+    goal_data = pd.DataFrame(
+        {
+            "KPI": [config["label"] for config in KPI_CONFIG.values()],
+            "Nu": [kpis[key] for key in KPI_CONFIG.keys()],
+            "Doel laag": [config["low"] for config in KPI_CONFIG.values()],
+            "Doel hoog": [config["high"] for config in KPI_CONFIG.values()],
+        }
+    )
+
+    fig = go.Figure()
+    for column, color in {
+        "Nu": COLORS["brand_green"],
+        "Doel laag": COLORS["soft_green"],
+        "Doel hoog": COLORS["soft_gold"],
+    }.items():
+        fig.add_trace(
+            go.Bar(
+                x=goal_data["KPI"],
+                y=goal_data[column],
+                name=column,
+                marker_color=color,
+            )
+        )
+
+    fig.update_layout(
+        title="KPI’s ten opzichte van doelstellingen",
+        barmode="group",
+        yaxis_title="Percentage",
+    )
+
+    st.plotly_chart(apply_plotly_layout(fig, height=470), use_container_width=True)
+
+
+def get_default_tasks() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            ["Checkout", "Checkout rustiger vormgeven", "Open", "Hoog", "Hoog", "", "", "Aankoopratio"],
+            ["Checkout", "Overbodige informatie verwijderen", "Open", "Hoog", "Hoog", "", "", "Checkout start"],
+            ["Productpagina’s", "Sticky koopknop toevoegen op mobiel", "Open", "Hoog", "Hoog", "", "", "Add-to-cart"],
+            ["Productpagina’s", "USP’s toevoegen onder productprijs", "Open", "Midden", "Hoog", "", "", "Add-to-cart"],
+            ["Productpagina’s", "Reviews beter zichtbaar maken", "Open", "Midden", "Midden", "", "", "Add-to-cart"],
+            ["Snelheid", "Pagina’s met trage laadtijden verbeteren", "Open", "Hoog", "Hoog", "", "", "Add-to-cart"],
+            ["Snelheid", "Mobiele performance controleren", "Open", "Hoog", "Midden", "", "", "Aankoopratio"],
+            ["Categoriepagina’s", "Snelle keuze knoppen toevoegen", "Open", "Laag", "Midden", "", "", "Add-to-cart"],
+            ["Zoek & filter", "Belangrijkste filters prominenter tonen", "Open", "Midden", "Midden", "", "", "Add-to-cart"],
+            ["Analyse", "Wekelijkse controle conversie", "Bezig", "Hoog", "Midden", "", "", "Alle KPI’s"],
+            ["Analyse", "Resultaten evalueren na 1 maand", "Open", "Hoog", "Hoog", "", "", "Alle KPI’s"],
+        ],
+        columns=TASK_COLUMNS,
+    )
+
+
+# Main app --------------------------------------------------------------------
+
+def main() -> None:
+    inject_style()
+
+    with st.spinner("Projectdata laden..."):
+        overview = clean_overview(load_sheet(SHEET_URLS["overview"]))
+        funnel = clean_funnel(load_sheet(SHEET_URLS["funnel"]))
+        pagespeed = clean_pagespeed(load_sheet(SHEET_URLS["pagespeed"]))
+
+    period = render_sidebar(overview, funnel, pagespeed)
     overview_filtered = get_period_data(overview, period)
+    previous_overview = get_previous_period_data(overview, period)
+
     kpis = calculate_kpis(overview_filtered)
+    previous_kpis = calculate_kpis(previous_overview)
+    pilot_period = create_pilot_period(overview)
     funnel_data = create_funnel_data(overview_filtered, funnel)
+    biggest_leak = find_biggest_funnel_leak(funnel_data)
+    pilot_status, pilot_status_class, pilot_status_text = get_pilot_health(kpis)
 
     render_header()
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric(
-        "Add-to-cart",
-        format_percent(kpis["add_to_cart_rate"]),
-        "Doel: 4–6%",
-    )
-    col2.metric(
-        "Checkout start",
-        format_percent(kpis["checkout_start_rate"]),
-        "Doel: 35–50%",
-    )
-    col3.metric(
-        "Aankoopratio",
-        format_percent(kpis["purchase_rate"]),
-        "Doel: 45–60%",
-    )
+    summary_cols = st.columns(4)
+    with summary_cols[0]:
+        render_card(pilot_status, pilot_status_text, pilot_status_class)
+    with summary_cols[1]:
+        body = (
+            f"Van <strong>{pilot_period.start_date.strftime('%d-%m-%Y')}</strong> "
+            f"tot <strong>{pilot_period.end_date.strftime('%d-%m-%Y')}</strong>."
+            if pilot_period.start_date is not None and pilot_period.end_date is not None
+            else "Nog geen geldige datumdata beschikbaar."
+        )
+        render_card("Pilotperiode", body)
+    with summary_cols[2]:
+        render_card(
+            "Volume",
+            (
+                f"<strong>{format_number(kpis['sessions'])}</strong> sessies, "
+                f"<strong>{format_number(kpis['purchases'])}</strong> aankopen."
+            ),
+        )
+    with summary_cols[3]:
+        render_card(
+            "Omzet",
+            f"Totale omzet in periode: <strong>{format_currency(kpis['revenue'])}</strong>.",
+        )
 
     add_space()
+    render_kpi_metrics(kpis, previous_kpis)
+    add_space()
 
-    tab_overview, tab_funnel, tab_speed, tab_tasks, tab_results = st.tabs(
-        ["Overzicht", "Checkout funnel", "Snelheid", "Taken", "Resultaten"]
+    tab_overview, tab_funnel, tab_speed, tab_actions, tab_effect = st.tabs(
+        ["Beslisoverzicht", "Funnel", "Snelheid", "Acties", "Effectmeting"]
     )
 
     with tab_overview:
-        insight_col1, insight_col2, insight_col3 = st.columns(3)
-
-        with insight_col1:
-            render_insight_card(
-                "Conversiedoel",
-                (
-                    "De add-to-cart staat nu op "
-                    f"<strong>{format_percent(kpis['add_to_cart_rate'])}</strong>. "
-                    "De gewenste bandbreedte is <strong>4–6%</strong>."
-                ),
+        cols = st.columns(3)
+        for col, (key, config) in zip(cols, KPI_CONFIG.items()):
+            status, status_class = get_kpi_status(
+                kpis[key],
+                config["low"],
+                config["high"],
             )
-
-        with insight_col2:
-            render_insight_card(
-                "Checkout optimalisatie",
-                (
-                    "Checkout start is "
-                    f"<strong>{format_percent(kpis['checkout_start_rate'])}</strong>. "
-                    "Focus op rust, duidelijkheid en minder afleiding."
-                ),
-            )
-
-        with insight_col3:
-            render_insight_card(
-                "Aankoopratio",
-                (
-                    "De aankoopratio vanaf checkout is "
-                    f"<strong>{format_percent(kpis['purchase_rate'])}</strong>. "
-                    "Doel is <strong>45–60%</strong>."
-                ),
-            )
+            with col:
+                render_card(
+                    status,
+                    (
+                        f"<strong>{config['label']}</strong>: "
+                        f"{format_percent(kpis[key])}. Doelbandbreedte: "
+                        f"{format_percent(config['low'])}–{format_percent(config['high'])}. "
+                        f"{config['description']}"
+                    ),
+                    status_class,
+                )
 
         add_space()
 
-        goal_data = KPI_TARGETS.assign(
-            Nu=[
-                kpis["add_to_cart_rate"],
-                kpis["checkout_start_rate"],
-                kpis["purchase_rate"],
-            ]
-        )
-
-        goal_fig = go.Figure()
-        for column, color in {
-            "Nu": COLORS["brand_green"],
-            "Doel laag": COLORS["soft_green"],
-            "Doel hoog": COLORS["soft_gold"],
-        }.items():
-            goal_fig.add_trace(
-                go.Bar(
-                    x=goal_data["KPI"],
-                    y=goal_data[column],
-                    name=column,
-                    marker_color=color,
-                )
+        cols = st.columns([2, 1])
+        with cols[0]:
+            render_goal_chart(kpis)
+        with cols[1]:
+            render_card(
+                biggest_leak["title"],
+                biggest_leak["description"],
+                "status-warning",
+            )
+            add_space()
+            lowest_kpi = min(
+                KPI_CONFIG.keys(),
+                key=lambda key: kpis[key] / KPI_CONFIG[key]["low"] if KPI_CONFIG[key]["low"] else 0,
+            )
+            render_card(
+                "Aanbevolen focus",
+                (
+                    f"Prioriteer optimalisaties rond <strong>{KPI_CONFIG[lowest_kpi]['label']}</strong>. "
+                    "Deze KPI ligt relatief het verst van de ondergrens af."
+                ),
             )
 
-        goal_fig.update_layout(
-            title="KPI’s ten opzichte van doelstellingen",
-            barmode="group",
-            yaxis_title="Percentage",
-        )
-
-        st.plotly_chart(
-            apply_plotly_layout(goal_fig, height=480),
-            use_container_width=True,
-        )
-
     with tab_funnel:
-        st.subheader("Checkout funnel")
+        st.subheader("Conversiefunnel")
 
         if funnel_data.empty:
             st.warning("Geen funneldata gevonden.")
@@ -568,37 +832,50 @@ def main() -> None:
                 title="Van sessie/productview naar aankoop",
                 color_discrete_sequence=[COLORS["brand_green"]],
             )
-
             st.plotly_chart(
                 apply_plotly_layout(funnel_fig, height=520),
                 use_container_width=True,
             )
 
-            st.dataframe(
-                funnel_data.assign(
-                    Aantal=funnel_data["Aantal"].map(format_number),
-                    **{
-                        "Conversie vorige stap": funnel_data[
-                            "Conversie vorige stap"
-                        ].map(format_percent),
-                        "Uitval vorige stap": funnel_data[
-                            "Uitval vorige stap"
-                        ].map(format_percent),
-                    },
-                ),
-                use_container_width=True,
-                hide_index=True,
+            display_funnel = funnel_data.assign(
+                Aantal=funnel_data["Aantal"].map(format_number),
+                **{
+                    "Conversie vorige stap": funnel_data["Conversie vorige stap"].map(format_percent),
+                    "Uitval vorige stap": funnel_data["Uitval vorige stap"].map(format_percent),
+                    "Uitval absoluut": funnel_data["Uitval absoluut"].map(format_number),
+                },
             )
+            st.dataframe(display_funnel, use_container_width=True, hide_index=True)
 
     with tab_speed:
         st.subheader("Websitesnelheid")
-
         required_columns = {"page", "mobile_speed", "desktop_speed"}
 
         if pagespeed.empty or not required_columns.issubset(pagespeed.columns):
             st.warning("Geen page speed data gevonden.")
         else:
-            speed_data = pagespeed.sort_values("mobile_speed")
+            speed_data = pagespeed.sort_values("mobile_speed").copy()
+            speed_data["mobiele_status"] = pd.cut(
+                speed_data["mobile_speed"],
+                bins=[-1, 49, 89, 100],
+                labels=["Slecht", "Verbeteren", "Goed"],
+            )
+
+            worst_pages = speed_data.head(3)
+            cols = st.columns(3)
+            for col, (_, row) in zip(cols, worst_pages.iterrows()):
+                with col:
+                    render_card(
+                        "Mobiele aandachtspagina",
+                        (
+                            f"<strong>{html.escape(str(row['page']))}</strong><br>"
+                            f"Mobiel: {format_number(row['mobile_speed'])}, "
+                            f"desktop: {format_number(row['desktop_speed'])}."
+                        ),
+                        "status-warning" if row["mobile_speed"] >= 50 else "status-bad",
+                    )
+
+            add_space()
 
             speed_long = speed_data.melt(
                 id_vars="page",
@@ -615,23 +892,18 @@ def main() -> None:
                 orientation="h",
                 barmode="group",
                 title="Mobiele en desktop snelheid per pagina",
-                color_discrete_sequence=[
-                    COLORS["soft_red"],
-                    COLORS["brand_green"],
-                ],
+                color_discrete_sequence=[COLORS["soft_red"], COLORS["brand_green"]],
             )
-
             speed_fig.update_layout(yaxis={"categoryorder": "total ascending"})
 
             st.plotly_chart(
                 apply_plotly_layout(speed_fig, height=620),
                 use_container_width=True,
             )
-
             st.dataframe(speed_data, use_container_width=True, hide_index=True)
 
-    with tab_tasks:
-        st.subheader("To do website optimalisaties")
+    with tab_actions:
+        st.subheader("Actieplanning")
 
         if "tasks" not in st.session_state:
             st.session_state.tasks = get_default_tasks()
@@ -639,6 +911,10 @@ def main() -> None:
         selected_status = st.selectbox(
             "Statusfilter",
             ["Alle", "Open", "Bezig", "Afgerond"],
+        )
+        selected_priority = st.selectbox(
+            "Prioriteitsfilter",
+            ["Alle", "Hoog", "Midden", "Laag"],
         )
 
         st.session_state.tasks = st.data_editor(
@@ -650,58 +926,66 @@ def main() -> None:
                 "Status": st.column_config.SelectboxColumn(
                     "Status",
                     options=["Open", "Bezig", "Afgerond"],
-                )
+                ),
+                "Prioriteit": st.column_config.SelectboxColumn(
+                    "Prioriteit",
+                    options=["Hoog", "Midden", "Laag"],
+                ),
+                "Impact": st.column_config.SelectboxColumn(
+                    "Impact",
+                    options=["Hoog", "Midden", "Laag"],
+                ),
+                "Deadline": st.column_config.DateColumn("Deadline"),
             },
         )
 
         visible_tasks = st.session_state.tasks.copy()
-
         if selected_status != "Alle":
             visible_tasks = visible_tasks[visible_tasks["Status"] == selected_status]
+        if selected_priority != "Alle":
+            visible_tasks = visible_tasks[visible_tasks["Prioriteit"] == selected_priority]
 
         st.dataframe(visible_tasks, use_container_width=True, hide_index=True)
 
-    with tab_results:
-        st.subheader("Wekelijkse monitoring")
+    with tab_effect:
+        st.subheader("Effectmeting")
 
-        required_columns = {
-            "date",
-            "sessies",
-            "add_to_carts",
-            "checkout_start",
-            "aankopen",
-        }
-
-        if overview.empty or not required_columns.issubset(overview.columns):
-            st.warning("Geen volledige datumdata beschikbaar.")
+        if previous_overview.empty:
+            st.info("Voor effectmeting is een vorige periode nodig. Kies bijvoorbeeld 7, 30 of 90 dagen.")
         else:
-            weekly = overview.copy()
-            weekly["week"] = weekly["date"].dt.to_period("W").astype(str)
+            effect_data = create_effect_data(kpis, previous_kpis)
 
-            weekly = (
-                weekly
-                .groupby("week", as_index=False)
-                .agg(
-                    sessies=("sessies", "sum"),
-                    add_to_carts=("add_to_carts", "sum"),
-                    checkout_start=("checkout_start", "sum"),
-                    aankopen=("aankopen", "sum"),
-                )
+            effect_fig = px.bar(
+                effect_data,
+                x="KPI",
+                y="Verschil pp",
+                color="Conclusie",
+                title="Verschil huidige periode versus vorige periode",
+                color_discrete_map={
+                    "Verbeterd": COLORS["soft_green"],
+                    "Gedaald": COLORS["soft_red"],
+                    "Gelijk": COLORS["soft_gold"],
+                },
             )
+            effect_fig.add_hline(y=0, line_dash="dash", line_color="rgba(8, 68, 34, 0.25)")
 
-            weekly["add_to_cart_rate"] = weekly.apply(
-                lambda row: safe_rate(row["add_to_carts"], row["sessies"]),
-                axis=1,
-            )
-            weekly["checkout_start_rate"] = weekly.apply(
-                lambda row: safe_rate(row["checkout_start"], row["add_to_carts"]),
-                axis=1,
-            )
-            weekly["purchase_rate"] = weekly.apply(
-                lambda row: safe_rate(row["aankopen"], row["checkout_start"]),
-                axis=1,
+            st.plotly_chart(
+                apply_plotly_layout(effect_fig, height=480),
+                use_container_width=True,
             )
 
+            display_effect = effect_data.assign(
+                **{
+                    "Vorige periode": effect_data["Vorige periode"].map(format_percent),
+                    "Huidige periode": effect_data["Huidige periode"].map(format_percent),
+                    "Verschil pp": effect_data["Verschil pp"].map(format_delta_pp),
+                }
+            )
+            st.dataframe(display_effect, use_container_width=True, hide_index=True)
+
+        weekly = create_weekly_data(overview)
+        if not weekly.empty:
+            add_space()
             weekly_long = weekly.melt(
                 id_vars="week",
                 value_vars=[
@@ -713,7 +997,7 @@ def main() -> None:
                 value_name="Percentage",
             )
 
-            fig = px.line(
+            weekly_fig = px.line(
                 weekly_long,
                 x="week",
                 y="Percentage",
@@ -726,15 +1010,13 @@ def main() -> None:
                     COLORS["soft_gold"],
                 ],
             )
-
             st.plotly_chart(
-                apply_plotly_layout(fig, height=520),
+                apply_plotly_layout(weekly_fig, height=520),
                 use_container_width=True,
             )
-
             st.dataframe(weekly, use_container_width=True, hide_index=True)
 
-    st.caption("Van Duinkerken · Website optimalisatieplan · Dashboard")
+    st.caption("Van Duinkerken · Pilotmonitor website optimalisatie")
 
 
 if __name__ == "__main__":
