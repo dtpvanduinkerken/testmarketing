@@ -69,6 +69,28 @@ header {
     margin-bottom: 34px;
 }
 
+.analysis-wrapper {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 26px 30px;
+    border: 1px solid rgba(8, 68, 34, 0.07);
+    box-shadow: 0 6px 18px rgba(8, 68, 34, 0.035);
+}
+
+.analysis-title {
+    color: #084422;
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 16px;
+}
+
+.analysis-item {
+    color: #084422;
+    font-size: 16px;
+    line-height: 1.55;
+    margin-bottom: 10px;
+}
+
 .kpi-wrapper {
     background: #ffffff;
     border-radius: 18px;
@@ -200,6 +222,29 @@ def to_number(series: pd.Series) -> pd.Series:
     ).fillna(0)
 
 
+def calculate_engagement(df: pd.DataFrame) -> pd.Series:
+    required_columns = ["likes", "comments", "shares", "saves", "views"]
+
+    if not all(column in df.columns for column in required_columns):
+        return pd.Series(0, index=df.index)
+
+    interactions = (
+        df["likes"]
+        + df["comments"]
+        + df["shares"]
+        + df["saves"]
+    )
+
+    engagement = interactions / df["views"].replace(0, pd.NA) * 100
+
+    return (
+        engagement
+        .fillna(0)
+        .replace([float("inf"), -float("inf")], 0)
+        .round(1)
+    )
+
+
 def clean_posts_data(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
@@ -233,29 +278,6 @@ def clean_followers_data(df: pd.DataFrame) -> pd.DataFrame:
             df[column] = to_number(df[column])
 
     return df.reset_index(drop=True)
-
-
-def calculate_engagement(df: pd.DataFrame) -> pd.Series:
-    required_columns = ["likes", "comments", "shares", "saves", "views"]
-
-    if not all(column in df.columns for column in required_columns):
-        return pd.Series(0, index=df.index)
-
-    interactions = (
-        df["likes"]
-        + df["comments"]
-        + df["shares"]
-        + df["saves"]
-    )
-
-    engagement = interactions / df["views"].replace(0, pd.NA) * 100
-
-    return (
-        engagement
-        .fillna(0)
-        .replace([float("inf"), -float("inf")], 0)
-        .round(1)
-    )
 
 
 @st.cache_data(ttl=600)
@@ -427,6 +449,114 @@ def render_kpis(
         )
 
 
+def build_analysis_points(
+    posts_df: pd.DataFrame,
+    followers_df: pd.DataFrame,
+) -> list[str]:
+    points = []
+
+    if posts_df.empty:
+        return ["Er is geen data beschikbaar voor analyse."]
+
+    total_posts = len(posts_df)
+    total_views = posts_df["views"].sum() if "views" in posts_df.columns else 0
+    avg_engagement = (
+        posts_df["engagement"].mean()
+        if "engagement" in posts_df.columns
+        else 0
+    )
+
+    points.append(
+        f"Er zijn {format_number(total_posts)} posts geanalyseerd met in totaal "
+        f"{format_number(total_views)} views."
+    )
+
+    if {"channel", "views"}.issubset(posts_df.columns):
+        channel_views = posts_df.groupby("channel")["views"].sum()
+
+        if not channel_views.empty:
+            best_channel = channel_views.idxmax()
+            best_channel_views = channel_views.max()
+
+            points.append(
+                f"{best_channel} levert de meeste views op "
+                f"({format_number(best_channel_views)} views)."
+            )
+
+    if {"topic", "views"}.issubset(posts_df.columns):
+        top_post = posts_df.sort_values("views", ascending=False).iloc[0]
+
+        points.append(
+            f"De best presterende post op views is '{top_post['topic']}' "
+            f"met {format_number(top_post['views'])} views."
+        )
+
+    if {"topic", "engagement"}.issubset(posts_df.columns):
+        top_engagement = posts_df.sort_values(
+            "engagement",
+            ascending=False,
+        ).iloc[0]
+
+        points.append(
+            f"De hoogste engagement komt van '{top_engagement['topic']}' "
+            f"met {top_engagement['engagement']:.1f}% engagement."
+        )
+
+    if "categorie" in posts_df.columns:
+        category_counts = posts_df["categorie"].dropna().value_counts()
+
+        if not category_counts.empty:
+            top_category = category_counts.idxmax()
+            top_category_count = category_counts.max()
+
+            points.append(
+                f"De meest gebruikte categorie is '{top_category}' "
+                f"met {format_number(top_category_count)} posts."
+            )
+
+    points.append(
+        f"De gemiddelde engagement over de geselecteerde data is "
+        f"{avg_engagement:.1f}%."
+    )
+
+    if not followers_df.empty:
+        insta_followers, insta_growth, _ = get_latest_growth(
+            followers_df,
+            "instagram_followers",
+        )
+        facebook_followers, facebook_growth, _ = get_latest_growth(
+            followers_df,
+            "facebook_followers",
+        )
+
+        points.append(
+            f"Instagram heeft momenteel {format_number(insta_followers)} "
+            f"volgers ({insta_growth}); Facebook heeft "
+            f"{format_number(facebook_followers)} volgers ({facebook_growth})."
+        )
+
+    return points
+
+
+def render_analysis(
+    posts_df: pd.DataFrame,
+    followers_df: pd.DataFrame,
+) -> None:
+    analysis_points = build_analysis_points(posts_df, followers_df)
+
+    analysis_html = """
+    <div class="analysis-wrapper">
+        <div class="analysis-title">Belangrijkste inzichten</div>
+    """
+
+    for point in analysis_points:
+        analysis_html += f'<div class="analysis-item">• {point}</div>'
+
+    analysis_html += "</div>"
+
+    st.markdown(analysis_html, unsafe_allow_html=True)
+
+
 def render_category_chart(df: pd.DataFrame) -> None:
     if "categorie" not in df.columns or df.empty:
         return
@@ -583,6 +713,9 @@ def main() -> None:
 
     add_space()
     render_kpis(followers_df, filtered_posts_df)
+
+    add_space()
+    render_analysis(filtered_posts_df, followers_df)
 
     add_space()
     render_category_chart(filtered_posts_df)
