@@ -10,8 +10,6 @@ import requests
 import streamlit as st
 
 
-# Config ----------------------------------------------------------------------
-
 st.set_page_config(
     page_title="Pilotmonitor website optimalisatie",
     page_icon="📈",
@@ -36,7 +34,6 @@ COLORS = {
     "soft_green": "#7d9b88",
     "soft_gold": "#c9a646",
     "soft_red": "#c76f6f",
-    "white": "#ffffff",
 }
 
 PERIOD_OPTIONS = {
@@ -87,8 +84,6 @@ class PilotPeriod:
     days_elapsed: int
     days_remaining: int
 
-
-# Styling ---------------------------------------------------------------------
 
 def inject_style() -> None:
     st.markdown(
@@ -215,8 +210,6 @@ def inject_style() -> None:
         unsafe_allow_html=True,
     )
 
-
-# Data helpers ----------------------------------------------------------------
 
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -421,13 +414,12 @@ def create_pilot_period(df: pd.DataFrame) -> PilotPeriod:
     start_date = df["date"].min()
     end_date = df["date"].max()
     days_total = max((end_date - start_date).days + 1, 1)
-    days_elapsed = days_total
 
     return PilotPeriod(
         start_date=start_date,
         end_date=end_date,
         days_total=days_total,
-        days_elapsed=days_elapsed,
+        days_elapsed=days_total,
         days_remaining=0,
     )
 
@@ -480,7 +472,7 @@ def create_funnel_data(overview: pd.DataFrame, funnel: pd.DataFrame) -> pd.DataF
     return funnel_data
 
 
-def find_biggest_funnel_leak(funnel_data: pd.DataFrame) -> dict[str, str | float]:
+def find_biggest_funnel_leak(funnel_data: pd.DataFrame) -> dict[str, str]:
     if funnel_data.empty or len(funnel_data) <= 1:
         return {
             "title": "Geen funnel-lek bepaald",
@@ -543,7 +535,10 @@ def create_weekly_data(overview: pd.DataFrame) -> pd.DataFrame:
     return weekly
 
 
-def create_effect_data(current_kpis: dict[str, float], previous_kpis: dict[str, float]) -> pd.DataFrame:
+def create_effect_data(
+    current_kpis: dict[str, float],
+    previous_kpis: dict[str, float],
+) -> pd.DataFrame:
     rows = []
 
     for key, config in KPI_CONFIG.items():
@@ -563,8 +558,6 @@ def create_effect_data(current_kpis: dict[str, float], previous_kpis: dict[str, 
 
     return pd.DataFrame(rows)
 
-
-# UI helpers ------------------------------------------------------------------
 
 def apply_plotly_layout(fig: go.Figure, height: int = 430) -> go.Figure:
     fig.update_layout(
@@ -654,7 +647,10 @@ def render_sidebar(
     return period
 
 
-def render_kpi_metrics(kpis: dict[str, float], previous_kpis: dict[str, float]) -> None:
+def render_kpi_metrics(
+    kpis: dict[str, float],
+    previous_kpis: dict[str, float],
+) -> None:
     columns = st.columns(3)
 
     for column, (key, config) in zip(columns, KPI_CONFIG.items()):
@@ -701,7 +697,7 @@ def render_goal_chart(kpis: dict[str, float]) -> None:
 
 
 def get_default_tasks() -> pd.DataFrame:
-    return pd.DataFrame(
+    tasks = pd.DataFrame(
         [
             ["Checkout", "Checkout rustiger vormgeven", "Open", "Hoog", "Hoog", "", pd.NaT, "Aankoopratio"],
             ["Checkout", "Overbodige informatie verwijderen", "Open", "Hoog", "Hoog", "", pd.NaT, "Checkout start"],
@@ -717,12 +713,10 @@ def get_default_tasks() -> pd.DataFrame:
         ],
         columns=TASK_COLUMNS,
     )
-    tasks["Deadline"] = pd.to_datetime(tasks["Deadline"], errors="coerce")
 
+    tasks["Deadline"] = pd.to_datetime(tasks["Deadline"], errors="coerce")
     return tasks
 
-
-# Main app --------------------------------------------------------------------
 
 def main() -> None:
     inject_style()
@@ -746,8 +740,10 @@ def main() -> None:
     render_header()
 
     summary_cols = st.columns(4)
+
     with summary_cols[0]:
         render_card(pilot_status, pilot_status_text, pilot_status_class)
+
     with summary_cols[1]:
         body = (
             f"Van <strong>{pilot_period.start_date.strftime('%d-%m-%Y')}</strong> "
@@ -756,6 +752,7 @@ def main() -> None:
             else "Nog geen geldige datumdata beschikbaar."
         )
         render_card("Pilotperiode", body)
+
     with summary_cols[2]:
         render_card(
             "Volume",
@@ -764,6 +761,7 @@ def main() -> None:
                 f"<strong>{format_number(kpis['purchases'])}</strong> aankopen."
             ),
         )
+
     with summary_cols[3]:
         render_card(
             "Omzet",
@@ -780,12 +778,14 @@ def main() -> None:
 
     with tab_overview:
         cols = st.columns(3)
+
         for col, (key, config) in zip(cols, KPI_CONFIG.items()):
             status, status_class = get_kpi_status(
                 kpis[key],
                 config["low"],
                 config["high"],
             )
+
             with col:
                 render_card(
                     status,
@@ -801,23 +801,29 @@ def main() -> None:
         add_space()
 
         cols = st.columns([2, 1])
+
         with cols[0]:
             render_goal_chart(kpis)
+
         with cols[1]:
             render_card(
                 biggest_leak["title"],
                 biggest_leak["description"],
                 "status-warning",
             )
+
             add_space()
+
             lowest_kpi = min(
                 KPI_CONFIG.keys(),
-                key=lambda key: kpis[key] / KPI_CONFIG[key]["low"] if KPI_CONFIG[key]["low"] else 0,
+                key=lambda key: kpis[key] / KPI_CONFIG[key]["low"],
             )
+
             render_card(
                 "Aanbevolen focus",
                 (
-                    f"Prioriteer optimalisaties rond <strong>{KPI_CONFIG[lowest_kpi]['label']}</strong>. "
+                    f"Prioriteer optimalisaties rond "
+                    f"<strong>{KPI_CONFIG[lowest_kpi]['label']}</strong>. "
                     "Deze KPI ligt relatief het verst van de ondergrens af."
                 ),
             )
@@ -835,6 +841,7 @@ def main() -> None:
                 title="Van sessie/productview naar aankoop",
                 color_discrete_sequence=[COLORS["brand_green"]],
             )
+
             st.plotly_chart(
                 apply_plotly_layout(funnel_fig, height=520),
                 use_container_width=True,
@@ -848,10 +855,12 @@ def main() -> None:
                     "Uitval absoluut": funnel_data["Uitval absoluut"].map(format_number),
                 },
             )
+
             st.dataframe(display_funnel, use_container_width=True, hide_index=True)
 
     with tab_speed:
         st.subheader("Websitesnelheid")
+
         required_columns = {"page", "mobile_speed", "desktop_speed"}
 
         if pagespeed.empty or not required_columns.issubset(pagespeed.columns):
@@ -866,6 +875,7 @@ def main() -> None:
 
             worst_pages = speed_data.head(3)
             cols = st.columns(3)
+
             for col, (_, row) in zip(cols, worst_pages.iterrows()):
                 with col:
                     render_card(
@@ -897,12 +907,14 @@ def main() -> None:
                 title="Mobiele en desktop snelheid per pagina",
                 color_discrete_sequence=[COLORS["soft_red"], COLORS["brand_green"]],
             )
+
             speed_fig.update_layout(yaxis={"categoryorder": "total ascending"})
 
             st.plotly_chart(
                 apply_plotly_layout(speed_fig, height=620),
                 use_container_width=True,
             )
+
             st.dataframe(speed_data, use_container_width=True, hide_index=True)
 
     with tab_actions:
@@ -910,16 +922,17 @@ def main() -> None:
 
         if "tasks" not in st.session_state:
             st.session_state.tasks = get_default_tasks()
-        else:
-            st.session_state.tasks["Deadline"] = pd.to_datetime(
-                st.session_state.tasks["Deadline"],
-                errors="coerce",
-            )
+
+        st.session_state.tasks["Deadline"] = pd.to_datetime(
+            st.session_state.tasks["Deadline"],
+            errors="coerce",
+        )
 
         selected_status = st.selectbox(
             "Statusfilter",
             ["Alle", "Open", "Bezig", "Afgerond"],
         )
+
         selected_priority = st.selectbox(
             "Prioriteitsfilter",
             ["Alle", "Hoog", "Midden", "Laag"],
@@ -948,8 +961,10 @@ def main() -> None:
         )
 
         visible_tasks = st.session_state.tasks.copy()
+
         if selected_status != "Alle":
             visible_tasks = visible_tasks[visible_tasks["Status"] == selected_status]
+
         if selected_priority != "Alle":
             visible_tasks = visible_tasks[visible_tasks["Prioriteit"] == selected_priority]
 
@@ -959,7 +974,10 @@ def main() -> None:
         st.subheader("Effectmeting")
 
         if previous_overview.empty:
-            st.info("Voor effectmeting is een vorige periode nodig. Kies bijvoorbeeld 7, 30 of 90 dagen.")
+            st.info(
+                "Voor effectmeting is een vorige periode nodig. "
+                "Kies bijvoorbeeld 7, 30 of 90 dagen."
+            )
         else:
             effect_data = create_effect_data(kpis, previous_kpis)
 
@@ -975,7 +993,12 @@ def main() -> None:
                     "Gelijk": COLORS["soft_gold"],
                 },
             )
-            effect_fig.add_hline(y=0, line_dash="dash", line_color="rgba(8, 68, 34, 0.25)")
+
+            effect_fig.add_hline(
+                y=0,
+                line_dash="dash",
+                line_color="rgba(8, 68, 34, 0.25)",
+            )
 
             st.plotly_chart(
                 apply_plotly_layout(effect_fig, height=480),
@@ -989,11 +1012,14 @@ def main() -> None:
                     "Verschil pp": effect_data["Verschil pp"].map(format_delta_pp),
                 }
             )
+
             st.dataframe(display_effect, use_container_width=True, hide_index=True)
 
         weekly = create_weekly_data(overview)
+
         if not weekly.empty:
             add_space()
+
             weekly_long = weekly.melt(
                 id_vars="week",
                 value_vars=[
@@ -1018,10 +1044,12 @@ def main() -> None:
                     COLORS["soft_gold"],
                 ],
             )
+
             st.plotly_chart(
                 apply_plotly_layout(weekly_fig, height=520),
                 use_container_width=True,
             )
+
             st.dataframe(weekly, use_container_width=True, hide_index=True)
 
     st.caption("Van Duinkerken · Pilotmonitor website optimalisatie")
