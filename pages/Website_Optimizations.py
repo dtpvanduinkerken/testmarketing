@@ -157,7 +157,7 @@ def normalize_columns(dataframe: pd.DataFrame) -> pd.DataFrame:
     return dataframe
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def load_sheet(url: str) -> pd.DataFrame:
     try:
         response = requests.get(url, timeout=15)
