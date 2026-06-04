@@ -140,6 +140,7 @@ def kpi_card(title, value):
     st.markdown(
         f"""
         <div class="kpi-card">
+
             <div class="kpi-label">
                 {title}
             </div>
@@ -147,9 +148,11 @@ def kpi_card(title, value):
             <div class="kpi-value">
                 {value}
             </div>
+
         </div>
         """,
         unsafe_allow_html=True,
+    ) unsafe_allow_html=True,
     )
 
 
