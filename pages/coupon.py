@@ -520,24 +520,9 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ==========================================================
 
 summary = (
-    df.groupby(
-        "coupon_code",
-        as_index=False,
-    )
-    .agg(
-        openstaand=(
-            "openstaand",
-            "sum",
-        ),
-        ingeleverd=(
-            "ingeleverd",
-            "sum",
-        ),
-        verlopen=(
-            "verlopen",
-            "sum",
-        ),
-    )
+    df.sort_values("date")
+      .groupby("coupon_code", as_index=False)
+      .last()
 )
 
 summary["totaal"] = (
