@@ -142,7 +142,15 @@ st.sidebar.header("Filters")
 
 coupon_options = (
     ["Alle coupons"]
-    + sorted(df["coupon_code"].astype(str).unique())
+    + sorted(
+        df["coupon_code"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .loc[lambda x: x != ""]
+        .unique()
+        .tolist()
+    )
 )
 
 selected_coupon = st.sidebar.selectbox(
