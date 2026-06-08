@@ -302,7 +302,7 @@ if (
     min_datum = df["datum"].min().date()
     max_datum = df["datum"].max().date()
 
-    selected_datums = st.sidebar.datum_input(
+    selected_datums = st.sidebar.date_input(
         "Periode",
         value=(min_datum, max_datum),
     )
@@ -437,7 +437,7 @@ with left:
         },
     )
 
-    fig.updatum_layout(
+    fig.update_layout(
         height=420,
         showlegend=False,
         plot_bgcolor="white",
@@ -488,12 +488,12 @@ with right:
             y="gebruikt",
         )
 
-        fig.updatum_traces(
+        fig.update_traces(
             line_color=BRAND_GREEN,
             line_width=3,
         )
 
-        fig.updatum_layout(
+        fig.update_layout(
             height=420,
             plot_bgcolor="white",
             paper_bgcolor=BACKGROUND,
@@ -626,7 +626,7 @@ with right:
         ],
     )
 
-    fig.updatum_layout(
+    fig.update_layout(
         height=450,
         plot_bgcolor="white",
         paper_bgcolor=BACKGROUND,
