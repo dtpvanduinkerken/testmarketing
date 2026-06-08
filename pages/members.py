@@ -356,9 +356,19 @@ def clean_member_status(member_status: pd.DataFrame) -> pd.DataFrame:
         today - member_status["laatste_aankoop"]
     ).dt.days
 
-    member_status["member_status"] = member_status["dagen_sinds_laatste_aankoop"].apply(
-        lambda days: "Slapend" if pd.notna(days) and days > SLEEPING_DAYS else "Actief"
-    )
+member_status["member_status"] = "Actief"
+
+member_status.loc[
+    (
+        member_status["eerste_aankoop"].isna()
+        | member_status["laatste_aankoop"].isna()
+        | (
+            member_status["dagen_sinds_laatste_aankoop"]
+            > SLEEPING_DAYS
+        )
+    ),
+    "member_status",
+] = "Slapend"
 
     return member_status
 
