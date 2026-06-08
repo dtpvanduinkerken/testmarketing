@@ -337,7 +337,6 @@ def clean_member_status(member_status: pd.DataFrame) -> pd.DataFrame:
 
     member_status["member_id"] = member_status["member_id"].astype(str).str.strip()
     member_status = member_status[member_status["member_id"] != ""]
-
     member_status["eerste_aankoop"] = pd.to_datetime(
         member_status["eerste_aankoop"],
         errors="coerce",
@@ -356,38 +355,21 @@ def clean_member_status(member_status: pd.DataFrame) -> pd.DataFrame:
         today - member_status["laatste_aankoop"]
     ).dt.days
 
-member_status["member_status"] = "Actief"
+    member_status["member_status"] = "Actief"
 
-member_status.loc[
-    (
-        member_status["eerste_aankoop"].isna()
-        | member_status["laatste_aankoop"].isna()
-        | (
-            member_status["dagen_sinds_laatste_aankoop"]
-            > SLEEPING_DAYS
-        )
-    ),
-    "member_status",
-] = "Slapend"
+    member_status.loc[
+        (
+            member_status["eerste_aankoop"].isna()
+            | member_status["laatste_aankoop"].isna()
+            | (
+                member_status["dagen_sinds_laatste_aankoop"]
+                > SLEEPING_DAYS
+            )
+        ),
+        "member_status",
+    ] = "Slapend"
 
     return member_status
-
-
-def prepare_weekly_members(members: pd.DataFrame) -> pd.DataFrame:
-    weekly = (
-        members.groupby(["year", "week", "week_label", "sort_key"])
-        .size()
-        .reset_index(name="Nieuwe members")
-        .sort_values("sort_key")
-    )
-
-    weekly["Groei"] = weekly["Nieuwe members"].diff().fillna(0)
-    weekly["Trend"] = weekly["Nieuwe members"].rolling(3, min_periods=1).mean()
-    weekly["Totaal"] = weekly["Nieuwe members"].cumsum()
-
-    return weekly
-
-
 # ==========================================================
 # SIDEBAR
 # ==========================================================
