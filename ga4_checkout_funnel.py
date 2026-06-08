@@ -15,11 +15,8 @@ from oauth2client.service_account import ServiceAccountCredentials
 # =====================================================
 
 PROPERTY_ID = "314034198"
-
 SPREADSHEET_NAME = "VDK Website Dashboard"
-
 WORKSHEET_NAME = "checkout_funnel"
-
 TOKEN_FILE = "token.json"
 
 # =====================================================
@@ -32,31 +29,16 @@ SCOPES = [
 
 credentials = None
 
-# =====================================================
-# TOKEN CHECK
-# =====================================================
-
 print("🔍 TOKEN BESTAAT:", os.path.exists(TOKEN_FILE))
 
-# =====================================================
-# BESTAAND TOKEN LADEN
-# =====================================================
-
 if os.path.exists(TOKEN_FILE):
-
     credentials = Credentials.from_authorized_user_file(
         TOKEN_FILE,
         SCOPES
     )
-
     print("✅ Bestaand token geladen")
 
-# =====================================================
-# NIEUWE LOGIN
-# =====================================================
-
 else:
-
     print("🔐 Nieuwe Google login gestart")
 
     flow = InstalledAppFlow.from_client_secrets_file(
@@ -71,7 +53,6 @@ else:
     )
 
     with open(TOKEN_FILE, "w") as token:
-
         token.write(credentials.to_json())
 
     print("✅ TOKEN.JSON opgeslagen")
@@ -95,11 +76,15 @@ client = BetaAnalyticsDataClient(
 )
 
 # =====================================================
-# GA4 REQUEST
+# GA4 REQUEST MET DATUM
 # =====================================================
 
 request = RunReportRequest(
     property=f"properties/{PROPERTY_ID}",
+
+    dimensions=[
+        {"name": "date"}
+    ],
 
     metrics=[
         {"name": "itemsViewed"},
@@ -119,37 +104,44 @@ request = RunReportRequest(
 response = client.run_report(request)
 
 # =====================================================
-# DATAFRAME
+# DATAFRAME MET DATUM
 # =====================================================
 
-row = response.rows[0]
+rows = []
 
-product_views = int(float(row.metric_values[0].value))
+for row in response.rows:
+    raw_date = row.dimension_values[0].value
+    datum = pd.to_datetime(raw_date, format="%Y%m%d").strftime("%Y-%m-%d")
 
-add_to_carts = int(float(row.metric_values[1].value))
+    product_views = int(float(row.metric_values[0].value))
+    add_to_carts = int(float(row.metric_values[1].value))
+    checkouts = int(float(row.metric_values[2].value))
+    aankopen = int(float(row.metric_values[3].value))
 
-checkouts = int(float(row.metric_values[2].value))
+    rows.extend([
+        {
+            "datum": datum,
+            "stap": "Product bekeken",
+            "aantal": product_views
+        },
+        {
+            "datum": datum,
+            "stap": "Toegevoegd aan winkelwagen",
+            "aantal": add_to_carts
+        },
+        {
+            "datum": datum,
+            "stap": "Checkout gestart",
+            "aantal": checkouts
+        },
+        {
+            "datum": datum,
+            "stap": "Aankopen",
+            "aantal": aankopen
+        }
+    ])
 
-aankopen = int(float(row.metric_values[3].value))
-
-funnel_data = pd.DataFrame([
-    {
-        "stap": "Product bekeken",
-        "aantal": product_views
-    },
-    {
-        "stap": "Toegevoegd aan winkelwagen",
-        "aantal": add_to_carts
-    },
-    {
-        "stap": "Checkout gestart",
-        "aantal": checkouts
-    },
-    {
-        "stap": "Aankopen",
-        "aantal": aankopen
-    }
-])
+funnel_data = pd.DataFrame(rows)
 
 # =====================================================
 # GOOGLE SHEETS AUTH
@@ -172,23 +164,50 @@ gs_client = gspread.authorize(sheet_creds)
 # =====================================================
 
 sheet = gs_client.open(SPREADSHEET_NAME)
-
 worksheet = sheet.worksheet(WORKSHEET_NAME)
 
 # =====================================================
-# SHEET LEEGMAKEN
+# BESTAANDE SHEET DATA OPHALEN
+# =====================================================
+
+existing_data = worksheet.get_all_records()
+
+if existing_data:
+    existing_df = pd.DataFrame(existing_data)
+else:
+    existing_df = pd.DataFrame(columns=["datum", "stap", "aantal"])
+
+# =====================================================
+# BESTAANDE DATA VAN DEZELFDE DATUMS VERVANGEN
+# =====================================================
+
+datums_nieuw = funnel_data["datum"].unique()
+
+if not existing_df.empty:
+    existing_df["datum"] = existing_df["datum"].astype(str)
+
+    existing_df = existing_df[
+        ~existing_df["datum"].isin(datums_nieuw)
+    ]
+
+combined_df = pd.concat(
+    [existing_df, funnel_data],
+    ignore_index=True
+)
+
+combined_df = combined_df.sort_values(
+    by=["datum", "stap"]
+)
+
+# =====================================================
+# SHEET BIJWERKEN
 # =====================================================
 
 worksheet.clear()
 
-# =====================================================
-# DATA SCHRIJVEN
-# =====================================================
-
-data = [funnel_data.columns.tolist()] + funnel_data.values.tolist()
+data = [combined_df.columns.tolist()] + combined_df.values.tolist()
 
 worksheet.update(data)
 
-print("✅ Funnel data succesvol geschreven!")
-
-print(funnel_data)
+print("✅ Funnel data succesvol per datum geschreven!")
+print(combined_df)
