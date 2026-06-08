@@ -23,7 +23,7 @@ BASE_URL = f"https://opensheet.elk.sh/{SHEET_ID}"
 
 SHEET_URLS = {
     "overview": f"{BASE_URL}/overview_kpis",
-    "funnel": f"{BASE_URL}/funnel",
+    "funnel": f"{BASE_URL}/checkout_funnel",
     "pagespeed": f"{BASE_URL}/page_speed",
 }
 
@@ -41,17 +41,14 @@ KPI_CONFIG = {
     "add_to_cart_rate": {
         "label": "Add-to-cart",
         "target": 6.0,
-        "baseline_key": "add_to_cart_rate",
     },
     "checkout_rate": {
         "label": "Checkout start",
         "target": 50.0,
-        "baseline_key": "checkout_rate",
     },
     "purchase_rate": {
         "label": "Aankoopratio",
         "target": 60.0,
-        "baseline_key": "purchase_rate",
     },
 }
 
@@ -66,6 +63,14 @@ NUMERIC_OVERVIEW_COLS = [
     "aankopen",
     "gemiddelde_orderwaarde",
 ]
+
+FUNNEL_ORDER = {
+    "Product bekeken": 1,
+    "Toegevoegd aan winkelwagen": 2,
+    "Checkout gestart": 3,
+    "Aankopen": 4,
+    "Aankoop": 4,
+}
 
 # ============================================================
 # STYLE
@@ -200,7 +205,7 @@ def apply_chart_style(fig, height: int = 420):
         paper_bgcolor=COLORS["white"],
         plot_bgcolor=COLORS["white"],
         font=dict(color=COLORS["green"]),
-        margin=dict(l=30, r=30, t=40, b=40),
+        margin=dict(l=30, r=30, t=45, b=40),
     )
     return fig
 
@@ -223,6 +228,21 @@ def get_pilot_progress() -> float:
     progress = (today - PILOT_START).days / total_days
 
     return max(0.0, min(progress, 1.0))
+
+
+def filter_by_period(df: pd.DataFrame, start_date, end_date) -> pd.DataFrame:
+    if df.empty or "date" not in df.columns:
+        return df
+
+    df = df.copy()
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+
+    return df[
+        df["date"].between(
+            pd.Timestamp(start_date),
+            pd.Timestamp(end_date),
+        )
+    ]
 
 
 # ============================================================
@@ -267,14 +287,25 @@ def clean_funnel(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
 
-    df = df.rename(columns={"stap": "Stap", "aantal": "Aantal"}).copy()
+    df = normalize_columns(df).rename(
+        columns={
+            "datum": "date",
+            "stap": "step",
+            "aantal": "count",
+        }
+    )
 
-    if not {"Stap", "Aantal"}.issubset(df.columns):
+    if not {"date", "step", "count"}.issubset(df.columns):
         return pd.DataFrame()
 
-    df["Aantal"] = parse_number(df["Aantal"])
+    df["date"] = pd.to_datetime(df["date"], errors="coerce", dayfirst=True)
+    df["step"] = df["step"].fillna("Onbekend").astype(str).str.strip()
+    df["count"] = parse_number(df["count"])
 
-    return df[df["Aantal"] > 0]
+    df = df.dropna(subset=["date"])
+    df = df[df["count"] > 0]
+
+    return df.sort_values(["date", "step"])
 
 
 def clean_pagespeed(df: pd.DataFrame) -> pd.DataFrame:
@@ -353,16 +384,62 @@ def build_comparison_df(
     return pd.DataFrame(rows)
 
 
+def create_funnel_total(funnel: pd.DataFrame) -> pd.DataFrame:
+    if funnel.empty:
+        return pd.DataFrame()
+
+    funnel_total = (
+        funnel.groupby("step", as_index=False)["count"]
+        .sum()
+        .rename(columns={"step": "Stap", "count": "Aantal"})
+    )
+
+    funnel_total["sort_order"] = funnel_total["Stap"].map(FUNNEL_ORDER).fillna(999)
+    funnel_total = funnel_total.sort_values("sort_order").drop(columns="sort_order")
+
+    funnel_total["Conversie vanaf vorige stap"] = (
+        funnel_total["Aantal"].div(funnel_total["Aantal"].shift(1)).fillna(1) * 100
+    )
+
+    funnel_total["Uitval vanaf vorige stap"] = (
+        100 - funnel_total["Conversie vanaf vorige stap"]
+    )
+
+    return funnel_total
+
+
+def create_funnel_trend(funnel: pd.DataFrame) -> pd.DataFrame:
+    if funnel.empty:
+        return pd.DataFrame()
+
+    trend = (
+        funnel.groupby(["date", "step"], as_index=False)["count"]
+        .sum()
+        .rename(
+            columns={
+                "date": "Datum",
+                "step": "Stap",
+                "count": "Aantal",
+            }
+        )
+    )
+
+    trend["sort_order"] = trend["Stap"].map(FUNNEL_ORDER).fillna(999)
+    trend = trend.sort_values(["Datum", "sort_order"]).drop(columns="sort_order")
+
+    return trend
+
+
 # ============================================================
 # SIDEBAR
 # ============================================================
 
-def render_sidebar(overview: pd.DataFrame) -> pd.DataFrame:
+def render_sidebar(overview: pd.DataFrame, funnel: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     st.sidebar.title("📈 Pilotmonitor")
     st.sidebar.caption("Filter de meetperiode")
 
     if overview.empty or "date" not in overview.columns:
-        return overview
+        return overview, funnel
 
     min_date = overview["date"].min().date()
     max_date = overview["date"].max().date()
@@ -375,14 +452,10 @@ def render_sidebar(overview: pd.DataFrame) -> pd.DataFrame:
     if isinstance(selected_dates, tuple) and len(selected_dates) == 2:
         start_date, end_date = selected_dates
 
-        overview = overview[
-            overview["date"].between(
-                pd.Timestamp(start_date),
-                pd.Timestamp(end_date),
-            )
-        ]
+        overview = filter_by_period(overview, start_date, end_date)
+        funnel = filter_by_period(funnel, start_date, end_date)
 
-    return overview
+    return overview, funnel
 
 
 # ============================================================
@@ -556,21 +629,62 @@ def render_impact_tab(comparison_df: pd.DataFrame) -> None:
 def render_funnel_tab(funnel: pd.DataFrame) -> None:
     st.subheader("Conversiefunnel")
 
-    if funnel.empty:
+    funnel_total = create_funnel_total(funnel)
+
+    if funnel_total.empty:
         st.info("Geen funneldata beschikbaar.")
         return
 
+    cols = st.columns(len(funnel_total))
+
+    for col, (_, row) in zip(cols, funnel_total.iterrows()):
+        col.metric(
+            row["Stap"],
+            format_number(row["Aantal"]),
+            format_percent(row["Conversie vanaf vorige stap"]),
+        )
+
     fig = px.funnel(
-        funnel,
+        funnel_total,
         x="Aantal",
         y="Stap",
+        title="Funnel totaal binnen geselecteerde periode",
         color_discrete_sequence=[COLORS["green"]],
     )
 
     st.plotly_chart(apply_chart_style(fig), use_container_width=True)
 
+    trend = create_funnel_trend(funnel)
+
+    if not trend.empty:
+        fig_trend = px.line(
+            trend,
+            x="Datum",
+            y="Aantal",
+            color="Stap",
+            markers=True,
+            title="Funnelontwikkeling per dag",
+            color_discrete_sequence=[
+                COLORS["green"],
+                COLORS["gold"],
+                COLORS["light_green"],
+                COLORS["red"],
+            ],
+        )
+
+        st.plotly_chart(apply_chart_style(fig_trend), use_container_width=True)
+
+    display_df = funnel_total.copy()
+    display_df["Aantal"] = display_df["Aantal"].map(format_number)
+    display_df["Conversie vanaf vorige stap"] = display_df[
+        "Conversie vanaf vorige stap"
+    ].map(format_percent)
+    display_df["Uitval vanaf vorige stap"] = display_df[
+        "Uitval vanaf vorige stap"
+    ].map(format_percent)
+
     st.dataframe(
-        funnel,
+        display_df,
         use_container_width=True,
         hide_index=True,
     )
@@ -728,7 +842,7 @@ def main() -> None:
             st.error(f"Data kon niet geladen worden: {error}")
             return
 
-    overview = render_sidebar(overview)
+    overview, funnel = render_sidebar(overview, funnel)
 
     if overview.empty:
         st.error("Geen geldige overview-data beschikbaar.")
