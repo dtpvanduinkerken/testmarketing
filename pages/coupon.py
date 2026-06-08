@@ -233,7 +233,7 @@ def clean_data(df):
 
     if "datum" in df.columns:
 
-        df["datum"] = pd.to_datumtime(
+        df["datum"] = pd.to_datetime(
             df["datum"],
             errors="coerce",
         )
