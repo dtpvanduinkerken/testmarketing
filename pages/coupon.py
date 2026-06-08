@@ -201,14 +201,14 @@ def load_data():
 
 def clean_data(df):
 
-numeric_cols = [
-    "verzonden",
-    "openstaand",
-    "ingeleverd",
-    "verlopen",
-    "discount",
-    "omzet",
-]
+    numeric_cols = [
+        "verzonden",
+        "openstaand",
+        "ingeleverd",
+        "verlopen",
+        "discount",
+        "omzet",
+    ]
 
     for col in numeric_cols:
 
