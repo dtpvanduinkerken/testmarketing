@@ -654,24 +654,21 @@ if not summary_filtered.empty:
 
         insight_card(
             "🏆 Hoogste conversie",
-            f"{best_coupon['coupon_code']}  
-{best_coupon['conversie']:.1f}%",
+            f"{best_coupon['coupon_code']}\n{best_coupon['conversie']:.1f}%",
         )
 
     with col2:
 
         insight_card(
             "🔥 Hoogste omzet",
-            f"{highest_revenue['coupon_code']}  
-€ {highest_revenue['omzet']:,.0f}",
+            f"{highest_revenue['coupon_code']}\n€ {highest_revenue['omzet']:,.0f}",
         )
 
     with col3:
 
         insight_card(
             "💡 Beste ROI",
-            f"{best_roi['coupon_code']}  
-{best_roi['roi']:.2f}",
+            f"{best_roi['coupon_code']}\n{best_roi['roi']:.2f}",
         )
 
 st.markdown("")
