@@ -5,10 +5,6 @@ import plotly.express as px
 import requests
 import streamlit as st
 
-# ==========================================================
-# CONFIG
-# ==========================================================
-
 st.set_page_config(
     page_title="VDK Website Optimizations",
     page_icon="🛠️",
@@ -32,10 +28,6 @@ BACKGROUND = "#f7f3ec"
 TEXT_MUTED = "#6f766f"
 CARD_BORDER = "rgba(8, 68, 34, 0.07)"
 SOFT_RED = "#c76f6f"
-
-# ==========================================================
-# STYLE
-# ==========================================================
 
 st.markdown(
     f"""
@@ -142,9 +134,6 @@ div[data-testid="stPlotlyChart"],
     unsafe_allow_html=True,
 )
 
-# ==========================================================
-# HELPERS
-# ==========================================================
 
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
@@ -178,7 +167,18 @@ def ensure_numeric(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     df = df.copy()
 
     for column in columns:
-        df[column] = parse_numeric(df[column]) if column in df.columns else 0
+        if column in df.columns:
+            df[column] = parse_numeric(df[column])
+
+    return df
+
+
+def add_missing_numeric_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    df = df.copy()
+
+    for column in columns:
+        if column not in df.columns:
+            df[column] = 0
 
     return df
 
@@ -188,8 +188,6 @@ def parse_date_column(df: pd.DataFrame) -> pd.DataFrame:
 
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"], errors="coerce", dayfirst=True)
-    else:
-        df["date"] = pd.NaT
 
     return df
 
@@ -231,10 +229,6 @@ def add_space() -> None:
     st.markdown('<div class="space"></div>', unsafe_allow_html=True)
 
 
-# ==========================================================
-# DATA LOADERS
-# ==========================================================
-
 @st.cache_data(ttl=300, show_spinner=False)
 def load_sheet(url: str) -> pd.DataFrame:
     response = requests.get(url, timeout=20)
@@ -251,20 +245,6 @@ def load_sheet(url: str) -> pd.DataFrame:
     return normalize_columns(pd.DataFrame(data))
 
 
-def load_all_data() -> dict[str, pd.DataFrame]:
-    return {
-        "landing": clean_landing(load_sheet(SHEET_URLS["landing"])),
-        "products": clean_products(load_sheet(SHEET_URLS["products"])),
-        "search": clean_search(load_sheet(SHEET_URLS["search"])),
-        "pagespeed": clean_pagespeed(load_sheet(SHEET_URLS["pagespeed"])),
-        "funnel": clean_funnel(load_sheet(SHEET_URLS["funnel"])),
-    }
-
-
-# ==========================================================
-# CLEANING
-# ==========================================================
-
 def clean_landing(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
@@ -280,22 +260,24 @@ def clean_landing(df: pd.DataFrame) -> pd.DataFrame:
         }
     )
 
-    df = ensure_numeric(
-        df,
-        [
-            "sessions",
-            "users",
-            "transactions",
-            "revenue",
-            "conversion_rate",
-            "bounce_rate",
-        ],
-    )
+    numeric_columns = [
+        "sessions",
+        "users",
+        "transactions",
+        "revenue",
+        "conversion_rate",
+        "bounce_rate",
+    ]
 
+    df = ensure_numeric(df, numeric_columns)
+    df = add_missing_numeric_columns(df, numeric_columns)
     df = parse_date_column(df)
 
     if "landingpage" not in df.columns:
         df["landingpage"] = "Onbekend"
+
+    df["landingpage"] = df["landingpage"].fillna("Onbekend").astype(str).str.strip()
+    df["landingpage"] = df["landingpage"].replace("", "Onbekend")
 
     df["bounce_impact_score"] = df["bounce_rate"] * df["sessions"]
 
@@ -316,20 +298,22 @@ def clean_products(df: pd.DataFrame) -> pd.DataFrame:
         }
     )
 
-    df = ensure_numeric(
-        df,
-        [
-            "itemsviewed",
-            "itemrevenue",
-            "itemspurchased",
-            "conversion_rate",
-        ],
-    )
+    numeric_columns = [
+        "itemsviewed",
+        "itemrevenue",
+        "itemspurchased",
+        "conversion_rate",
+    ]
 
+    df = ensure_numeric(df, numeric_columns)
+    df = add_missing_numeric_columns(df, numeric_columns)
     df = parse_date_column(df)
 
     if "itemname" not in df.columns:
         df["itemname"] = "Onbekend"
+
+    df["itemname"] = df["itemname"].fillna("Onbekend").astype(str).str.strip()
+    df["itemname"] = df["itemname"].replace("", "Onbekend")
 
     df["revenue_per_view"] = safe_divide(df["itemrevenue"], df["itemsviewed"])
 
@@ -354,13 +338,20 @@ def clean_search(df: pd.DataFrame) -> pd.DataFrame:
         }
     )
 
-    df = ensure_numeric(df, ["searches", "users", "results", "conversions"])
+    numeric_columns = ["searches", "users", "results", "conversions"]
+
+    df = ensure_numeric(df, numeric_columns)
+    df = add_missing_numeric_columns(df, numeric_columns)
     df = parse_date_column(df)
 
     if "searchterm" not in df.columns:
         df["searchterm"] = "Onbekend"
 
+    df["searchterm"] = df["searchterm"].fillna("Onbekend").astype(str).str.strip()
+    df["searchterm"] = df["searchterm"].replace("", "Onbekend")
+
     df["results_per_search"] = safe_divide(df["results"], df["searches"])
+
     df["search_conversion_rate"] = safe_divide(
         df["conversions"],
         df["searches"],
@@ -375,11 +366,18 @@ def clean_pagespeed(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
     df = normalize_columns(df).rename(columns={"pagina": "page"})
-    df = ensure_numeric(df, ["mobile_speed", "desktop_speed"])
+
+    numeric_columns = ["mobile_speed", "desktop_speed"]
+
+    df = ensure_numeric(df, numeric_columns)
+    df = add_missing_numeric_columns(df, numeric_columns)
     df = parse_date_column(df)
 
     if "page" not in df.columns:
         df["page"] = "Onbekend"
+
+    df["page"] = df["page"].fillna("Onbekend").astype(str).str.strip()
+    df["page"] = df["page"].replace("", "Onbekend")
 
     df["speed_score"] = df["mobile_speed"]
     df["speed_risk"] = 100 - df["mobile_speed"]
@@ -398,25 +396,37 @@ def clean_funnel(df: pd.DataFrame) -> pd.DataFrame:
         }
     )
 
-    df = ensure_numeric(
-        df,
-        [
-            "count",
-            "view_item",
-            "add_to_cart",
-            "begin_checkout",
-            "purchase",
-        ],
-    )
+    possible_numeric_columns = [
+        "count",
+        "view_item",
+        "add_to_cart",
+        "begin_checkout",
+        "purchase",
+    ]
 
+    available_numeric_columns = [
+        column for column in possible_numeric_columns if column in df.columns
+    ]
+
+    df = ensure_numeric(df, available_numeric_columns)
     df = parse_date_column(df)
+
+    if "step" in df.columns:
+        df["step"] = df["step"].fillna("Onbekend").astype(str).str.strip()
+        df["step"] = df["step"].replace("", "Onbekend")
 
     return df
 
 
-# ==========================================================
-# FILTERS
-# ==========================================================
+def load_all_data() -> dict[str, pd.DataFrame]:
+    return {
+        "landing": clean_landing(load_sheet(SHEET_URLS["landing"])),
+        "products": clean_products(load_sheet(SHEET_URLS["products"])),
+        "search": clean_search(load_sheet(SHEET_URLS["search"])),
+        "pagespeed": clean_pagespeed(load_sheet(SHEET_URLS["pagespeed"])),
+        "funnel": clean_funnel(load_sheet(SHEET_URLS["funnel"])),
+    }
+
 
 def get_selected_period(dataframes: list[pd.DataFrame]) -> tuple:
     date_series = []
@@ -429,7 +439,7 @@ def get_selected_period(dataframes: list[pd.DataFrame]) -> tuple:
                 date_series.append(dates)
 
     if not date_series:
-        st.sidebar.info("Geen datumkolommen gevonden.")
+        st.sidebar.info("Geen geldige datumkolommen gevonden.")
         return None, None, "alle beschikbare data"
 
     all_dates = pd.concat(date_series, ignore_index=True)
@@ -478,7 +488,13 @@ def get_selected_period(dataframes: list[pd.DataFrame]) -> tuple:
 
 
 def filter_by_period(df: pd.DataFrame, start_date, end_date) -> pd.DataFrame:
-    if df.empty or "date" not in df.columns or start_date is None:
+    if df.empty or "date" not in df.columns or start_date is None or end_date is None:
+        return df
+
+    df = df.copy()
+    df["date"] = pd.to_datetime(df["date"], errors="coerce", dayfirst=True)
+
+    if df["date"].notna().sum() == 0:
         return df
 
     return df[
@@ -496,7 +512,7 @@ def render_sidebar(data: dict[str, pd.DataFrame]) -> dict:
 
     start_date, end_date, period_text = get_selected_period(list(data.values()))
 
-    filtered = {
+    filtered_data = {
         key: filter_by_period(df, start_date, end_date)
         for key, df in data.items()
     }
@@ -530,12 +546,8 @@ def render_sidebar(data: dict[str, pd.DataFrame]) -> dict:
         ),
     }
 
-    return {"data": filtered, "settings": settings}
+    return {"data": filtered_data, "settings": settings}
 
-
-# ==========================================================
-# DERIVED DATA
-# ==========================================================
 
 def create_funnel_data(funnel: pd.DataFrame) -> pd.DataFrame:
     if funnel.empty:
@@ -549,7 +561,7 @@ def create_funnel_data(funnel: pd.DataFrame) -> pd.DataFrame:
         )
     else:
         funnel_columns = ["view_item", "add_to_cart", "begin_checkout", "purchase"]
-        available_columns = [col for col in funnel_columns if col in funnel.columns]
+        available_columns = [column for column in funnel_columns if column in funnel.columns]
 
         if not available_columns:
             return pd.DataFrame()
@@ -563,8 +575,8 @@ def create_funnel_data(funnel: pd.DataFrame) -> pd.DataFrame:
 
         funnel_data = pd.DataFrame(
             {
-                "Stap": [labels[col] for col in available_columns],
-                "Aantal": [funnel[col].sum() for col in available_columns],
+                "Stap": [labels[column] for column in available_columns],
+                "Aantal": [funnel[column].sum() for column in available_columns],
             }
         )
 
@@ -574,10 +586,7 @@ def create_funnel_data(funnel: pd.DataFrame) -> pd.DataFrame:
         return funnel_data
 
     funnel_data["Conversie vanaf vorige stap"] = (
-        funnel_data["Aantal"]
-        .div(funnel_data["Aantal"].shift(1))
-        .fillna(1)
-        * 100
+        funnel_data["Aantal"].div(funnel_data["Aantal"].shift(1)).fillna(1) * 100
     )
 
     funnel_data["Uitval vanaf vorige stap"] = (
@@ -640,10 +649,6 @@ def calculate_metrics(
     }
 
 
-# ==========================================================
-# RENDER
-# ==========================================================
-
 def render_header(period_text: str) -> None:
     st.markdown(
         f"""
@@ -688,6 +693,63 @@ def insight_card(title: str, text: str) -> None:
     )
 
 
+def render_page_sessions_chart(
+    landing: pd.DataFrame,
+    settings: dict,
+    height: int = 620,
+) -> None:
+    required = {"landingpage", "sessions", "conversion_rate"}
+
+    if landing.empty or not required.issubset(landing.columns):
+        st.info("Geen bruikbare landingpage-data beschikbaar.")
+        return
+
+    page_data = landing[landing["sessions"] >= settings["minimum_sessions"]].copy()
+
+    if page_data.empty:
+        st.info("Geen pagina's boven het ingestelde minimum aantal sessies.")
+        return
+
+    page_data = page_data.sort_values(
+        ["sessions", "conversion_rate"],
+        ascending=[False, True],
+    ).head(15)
+
+    fig = px.bar(
+        page_data,
+        x="sessions",
+        y="landingpage",
+        orientation="h",
+        text="sessions",
+        title="Pagina's met meeste sessies en conversiekans",
+        color="conversion_rate",
+        color_continuous_scale=["#dfe7df", "#7d9b88", BRAND_GREEN],
+    )
+
+    fig.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+    fig.update_layout(yaxis={"categoryorder": "total ascending"})
+
+    st.plotly_chart(apply_plotly_layout(fig, height=height), use_container_width=True)
+
+
+def render_funnel_chart(funnel: pd.DataFrame, height: int = 540) -> None:
+    funnel_data = create_funnel_data(funnel)
+
+    if funnel_data.empty:
+        st.info("Geen bruikbare funneldata gevonden.")
+        return
+
+    fig = px.funnel(
+        funnel_data,
+        x="Aantal",
+        y="Stap",
+        title="Checkout funnel",
+        color_discrete_sequence=[BRAND_GREEN],
+    )
+
+    st.plotly_chart(apply_plotly_layout(fig, height=height), use_container_width=True)
+
+
 def render_overview_tab(
     landing: pd.DataFrame,
     funnel: pd.DataFrame,
@@ -728,74 +790,38 @@ def render_overview_tab(
         render_funnel_chart(funnel, height=520)
 
 
-def render_page_sessions_chart(
-    landing: pd.DataFrame,
-    settings: dict,
-    height: int = 620,
-) -> None:
-    required = {"landingpage", "sessions", "conversion_rate"}
-
-    if landing.empty or not required.issubset(landing.columns):
-        st.info("Geen bruikbare landingpage-data beschikbaar.")
-        return
-
-    page_data = landing[landing["sessions"] >= settings["minimum_sessions"]].copy()
-
-    if page_data.empty:
-        st.info("Geen pagina's boven het ingestelde minimum aantal sessies.")
-        return
-
-    page_data = page_data.sort_values(
-        ["sessions", "conversion_rate"],
-        ascending=[False, True],
-    ).head(15)
-
-    fig = px.bar(
-        page_data,
-        x="sessions",
-        y="landingpage",
-        orientation="h",
-        text="sessions",
-        title="Pagina's met meeste sessies en conversiekans",
-        color="conversion_rate",
-        color_continuous_scale=["#dfe7df", "#7d9b88", BRAND_GREEN],
-    )
-
-    fig.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
-    fig.update_layout(yaxis={"categoryorder": "total ascending"})
-
-    st.plotly_chart(apply_plotly_layout(fig, height=height), use_container_width=True)
-
-
 def render_pages_tab(landing: pd.DataFrame, settings: dict) -> None:
     st.subheader("Pagina's met optimalisatiekansen")
 
     render_page_sessions_chart(landing, settings)
 
-    if not landing.empty:
-        page_data = landing[landing["sessions"] >= settings["minimum_sessions"]].copy()
-        page_data = page_data.sort_values(
-            ["sessions", "conversion_rate"],
-            ascending=[False, True],
-        )
+    if landing.empty:
+        return
 
-        columns = [
-            "date",
-            "landingpage",
-            "sessions",
-            "users",
-            "transactions",
-            "revenue",
-            "conversion_rate",
-            "bounce_rate",
-            "bounce_impact_score",
-        ]
+    page_data = landing[landing["sessions"] >= settings["minimum_sessions"]].copy()
 
-        st.dataframe(
-            page_data[[col for col in columns if col in page_data.columns]],
-            use_container_width=True,
-            hide_index=True,
-        )
+    page_data = page_data.sort_values(
+        ["sessions", "conversion_rate"],
+        ascending=[False, True],
+    )
+
+    columns = [
+        "date",
+        "landingpage",
+        "sessions",
+        "users",
+        "transactions",
+        "revenue",
+        "conversion_rate",
+        "bounce_rate",
+        "bounce_impact_score",
+    ]
+
+    st.dataframe(
+        page_data[[column for column in columns if column in page_data.columns]],
+        use_container_width=True,
+        hide_index=True,
+    )
 
 
 def render_products_tab(products: pd.DataFrame, settings: dict) -> None:
@@ -847,7 +873,7 @@ def render_products_tab(products: pd.DataFrame, settings: dict) -> None:
     ]
 
     st.dataframe(
-        product_data[[col for col in columns if col in product_data.columns]],
+        product_data[[column for column in columns if column in product_data.columns]],
         use_container_width=True,
         hide_index=True,
     )
@@ -895,7 +921,7 @@ def render_search_tab(search: pd.DataFrame) -> None:
     ]
 
     st.dataframe(
-        search_data[[col for col in columns if col in search_data.columns]],
+        search_data[[column for column in columns if column in search_data.columns]],
         use_container_width=True,
         hide_index=True,
     )
@@ -937,28 +963,10 @@ def render_speed_tab(pagespeed: pd.DataFrame) -> None:
     columns = ["date", "page", "mobile_speed", "desktop_speed", "speed_risk"]
 
     st.dataframe(
-        speed_data[[col for col in columns if col in speed_data.columns]],
+        speed_data[[column for column in columns if column in speed_data.columns]],
         use_container_width=True,
         hide_index=True,
     )
-
-
-def render_funnel_chart(funnel: pd.DataFrame, height: int = 540) -> None:
-    funnel_data = create_funnel_data(funnel)
-
-    if funnel_data.empty:
-        st.info("Geen bruikbare funneldata gevonden.")
-        return
-
-    fig = px.funnel(
-        funnel_data,
-        x="Aantal",
-        y="Stap",
-        title="Checkout funnel",
-        color_discrete_sequence=[BRAND_GREEN],
-    )
-
-    st.plotly_chart(apply_plotly_layout(fig, height=height), use_container_width=True)
 
 
 def render_funnel_tab(funnel: pd.DataFrame) -> None:
@@ -985,7 +993,6 @@ def render_funnel_tab(funnel: pd.DataFrame) -> None:
 
 
 def render_tasks_tab(
-    products: pd.DataFrame,
     search: pd.DataFrame,
     funnel: pd.DataFrame,
     metrics: dict,
@@ -1017,7 +1024,7 @@ def render_tasks_tab(
             }
         )
 
-    if metrics["total_searches"] > 0:
+    if not search.empty and metrics["total_searches"] > 0:
         tasks.append(
             {
                 "Prioriteit": "Middel",
@@ -1078,10 +1085,6 @@ def render_data_tab(data: dict[str, pd.DataFrame], show_raw_data: bool) -> None:
         st.subheader(label)
         st.dataframe(data[key], use_container_width=True, hide_index=True)
 
-
-# ==========================================================
-# MAIN
-# ==========================================================
 
 def main() -> None:
     with st.spinner("Optimalisatiedata laden..."):
@@ -1146,7 +1149,7 @@ def main() -> None:
         render_funnel_tab(funnel)
 
     with tabs[6]:
-        render_tasks_tab(products, search, funnel, metrics, settings)
+        render_tasks_tab(search, funnel, metrics, settings)
 
     with tabs[7]:
         render_data_tab(data, settings["show_raw_data"])
