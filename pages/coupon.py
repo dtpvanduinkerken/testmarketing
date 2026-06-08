@@ -563,32 +563,32 @@ left, right = st.columns([1, 1])
 
 with left:
 
-    st.subheader("Gebruik vs verloop")
+    st.subheader("Top omzet per coupon")
 
-chart_data = (
-    summary_filtered
-    .sort_values("omzet", ascending=False)
-    .head(10)
-)
+    chart_data = (
+        summary_filtered
+        .sort_values("omzet", ascending=False)
+        .head(10)
+    )
 
-fig = px.bar(
-    chart_data,
-    x="coupon_code",
-    y="omzet",
-    color="omzet",
-    color_continuous_scale=[
-        "#dce7e1",
-        "#084422"
-    ]
-)
+    fig = px.bar(
+        chart_data,
+        x="coupon_code",
+        y="omzet",
+        color="omzet",
+        color_continuous_scale=[
+            "#dce7e1",
+            "#084422",
+        ],
+    )
 
-    fig.updatum_layout(
+    fig.update_layout(
         height=450,
         plot_bgcolor="white",
         paper_bgcolor=BACKGROUND,
         xaxis_title="",
-        yaxis_title="Aantal",
-        legend_title="",
+        yaxis_title="Omzet (€)",
+        coloraxis_showscale=False,
     )
 
     st.plotly_chart(
