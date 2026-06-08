@@ -299,8 +299,8 @@ if (
     and df["datum"].notna().any()
 ):
 
-    min_datum = df["datum"].min().datum()
-    max_datum = df["datum"].max().datum()
+    min_datum = df["datum"].min().date()
+    max_datum = df["datum"].max().date()
 
     selected_datums = st.sidebar.datum_input(
         "Periode",
