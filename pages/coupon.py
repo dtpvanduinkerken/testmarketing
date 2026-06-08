@@ -241,6 +241,28 @@ def clean_data(df):
     return df
 
 
+def summarize_coupons(df):
+    agg = {
+        "verzonden": "sum",
+        "ingeleverd": "sum",
+        "verlopen": "sum",
+        "discount": "sum",
+        "omzet": "sum",
+    }
+
+    if "openstaand" in df.columns:
+        agg["openstaand"] = "last"
+
+    if "campagne" in df.columns:
+        agg["campagne"] = "last"
+
+    return (
+        df.sort_values("datum", na_position="last")
+          .groupby("coupon_code", as_index=False)
+          .agg(agg)
+    )
+
+
 # ==========================================================
 # DATA
 # ==========================================================
@@ -322,17 +344,41 @@ if (
 # KPI'S
 # ==========================================================
 
-total_openstaand = df["openstaand"].sum()
-total_ingeleverd = df["ingeleverd"].sum()
-total_verlopen = df["verlopen"].sum()
+summary = summarize_coupons(df)
+summary["totaal"] = summary["verzonden"]
 
-total_verzonden = df["verzonden"].sum()
-total_openstaand = df["openstaand"].sum()
-total_ingeleverd = df["ingeleverd"].sum()
-total_verlopen = df["verlopen"].sum()
+summary["conversie"] = (
+    summary["ingeleverd"]
+    / summary["verzonden"]
+    * 100
+).fillna(0)
 
-total_discount = df["discount"].sum()
-total_omzet = df["omzet"].sum()
+summary["verloop_percentage"] = (
+    summary["verlopen"]
+    / summary["verzonden"]
+    * 100
+).fillna(0)
+
+summary["roi"] = (
+    summary["omzet"]
+    .div(summary["discount"].replace(0, pd.NA))
+).fillna(0)
+
+summary["openstaand_percentage"] = (
+    summary["openstaand"]
+    / summary["verzonden"]
+    * 100
+).fillna(0)
+
+# KPI totals use aggregated summary values so daily mutaties worden correct verwerkt
+
+total_verzonden = summary["verzonden"].sum()
+total_ingeleverd = summary["ingeleverd"].sum()
+total_verlopen = summary["verlopen"].sum()
+total_openstaand = summary["openstaand"].sum()
+
+total_discount = summary["discount"].sum()
+total_omzet = summary["omzet"].sum()
 
 conversion_rate = (
     total_ingeleverd / total_verzonden * 100
@@ -516,54 +562,6 @@ st.markdown("<br>", unsafe_allow_html=True)
 # SAMENVATTING PER COUPON
 # ==========================================================
 
-def summarize_coupons(df):
-    agg = {
-        "verzonden": "sum",
-        "ingeleverd": "sum",
-        "verlopen": "sum",
-        "discount": "sum",
-        "omzet": "sum",
-    }
-
-    if "openstaand" in df.columns:
-        agg["openstaand"] = "last"
-
-    if "campagne" in df.columns:
-        agg["campagne"] = "last"
-
-    return (
-        df.sort_values("datum", na_position="last")
-          .groupby("coupon_code", as_index=False)
-          .agg(agg)
-    )
-
-
-summary = summarize_coupons(df)
-summary["totaal"] = summary["verzonden"]
-
-summary["conversie"] = (
-    summary["ingeleverd"]
-    / summary["verzonden"]
-    * 100
-).fillna(0)
-
-summary["verloop_percentage"] = (
-    summary["verlopen"]
-    / summary["verzonden"]
-    * 100
-).fillna(0)
-
-summary["roi"] = (
-    summary["omzet"]
-    .div(summary["discount"].replace(0, pd.NA))
-).fillna(0)
-
-summary["openstaand_percentage"] = (
-    summary["openstaand"]
-    / summary["verzonden"]
-    * 100
-).fillna(0)
-
 # Alleen coupons met voldoende volume
 summary_filtered = summary[
     summary["totaal"] >= 10
@@ -668,12 +666,12 @@ if not summary_filtered.empty:
         summary_filtered["conversie"].idxmax()
     ]
 
-    highest_expiry = summary_filtered.loc[
-        summary_filtered["verloop_percentage"].idxmax()
+    highest_revenue = summary_filtered.loc[
+        summary_filtered["omzet"].idxmax()
     ]
 
-    most_used = summary_filtered.loc[
-        summary_filtered["ingeleverd"].idxmax()
+    best_roi = summary_filtered.loc[
+        summary_filtered["roi"].idxmax()
     ]
 
     col1, col2, col3 = st.columns(3)
