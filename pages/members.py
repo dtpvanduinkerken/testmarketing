@@ -370,6 +370,20 @@ def clean_member_status(member_status: pd.DataFrame) -> pd.DataFrame:
     ] = "Slapend"
 
     return member_status
+
+def prepare_weekly_members(members: pd.DataFrame) -> pd.DataFrame:
+    weekly = (
+        members.groupby(["year", "week", "week_label", "sort_key"])
+        .size()
+        .reset_index(name="Nieuwe members")
+        .sort_values("sort_key")
+    )
+
+    weekly["Groei"] = weekly["Nieuwe members"].diff().fillna(0)
+    weekly["Trend"] = weekly["Nieuwe members"].rolling(3, min_periods=1).mean()
+    weekly["Totaal"] = weekly["Nieuwe members"].cumsum()
+
+    return weekly
 # ==========================================================
 # SIDEBAR
 # ==========================================================
