@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import requests
 import streamlit as st
 
+# ==========================================================
+# CONFIG
+# ==========================================================
 
 st.set_page_config(
     page_title="VDK Website Optimizations",
@@ -11,7 +15,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
 
 SHEET_ID = "1wiE1a6rjX7bV2dun-R33SdoHsf70XPrdrB957bA8zFo"
 BASE_URL = f"https://opensheet.elk.sh/{SHEET_ID}"
@@ -30,8 +33,12 @@ TEXT_MUTED = "#6f766f"
 CARD_BORDER = "rgba(8, 68, 34, 0.07)"
 SOFT_RED = "#c76f6f"
 
+# ==========================================================
+# STYLE
+# ==========================================================
 
-STYLE = f"""
+st.markdown(
+    f"""
 <link rel="stylesheet" href="https://use.typekit.net/nap5xax.css">
 
 <style>
@@ -46,10 +53,13 @@ html, body, [data-testid="stAppViewContainer"] {{
     max-width: 1500px;
 }}
 
-#MainMenu,
-footer,
-header {{
+#MainMenu, footer, header {{
     visibility: hidden;
+}}
+
+section[data-testid="stSidebar"] {{
+    background: #ffffff;
+    border-right: 1px solid rgba(8, 68, 34, 0.06);
 }}
 
 .vdk-main-title {{
@@ -74,15 +84,6 @@ header {{
     background: rgba(8, 68, 34, 0.08);
     margin-top: 24px;
     margin-bottom: 34px;
-}}
-
-[data-testid="stSidebar"] {{
-    background: #ffffff;
-    border-right: 1px solid rgba(8, 68, 34, 0.06);
-}}
-
-[data-testid="stSidebar"] * {{
-    color: {BRAND_GREEN} !important;
 }}
 
 [data-testid="stMetric"] {{
@@ -133,41 +134,115 @@ div[data-testid="stPlotlyChart"],
     font-size: 14px;
 }}
 
-h1, h2, h3, h4 {{
-    color: {BRAND_GREEN};
-}}
-
-h3 {{
-    font-size: 20px;
-    font-weight: 700;
-}}
-
 .space {{
     height: 34px;
 }}
 </style>
-"""
+""",
+    unsafe_allow_html=True,
+)
 
-st.markdown(STYLE, unsafe_allow_html=True)
+# ==========================================================
+# HELPERS
+# ==========================================================
+
+def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    df = df.copy()
+    df.columns = (
+        df.columns.str.strip()
+        .str.lower()
+        .str.replace(" ", "_", regex=False)
+        .str.replace("-", "_", regex=False)
+        .str.replace("/", "_", regex=False)
+    )
+    return df
 
 
-def normalize_columns(dataframe: pd.DataFrame) -> pd.DataFrame:
-    dataframe = dataframe.copy()
-    dataframe.columns = dataframe.columns.str.strip().str.lower()
-    return dataframe
+def parse_numeric(series: pd.Series) -> pd.Series:
+    return (
+        series.astype(str)
+        .str.replace("€", "", regex=False)
+        .str.replace("%", "", regex=False)
+        .str.replace(".", "", regex=False)
+        .str.replace(",", ".", regex=False)
+        .str.strip()
+        .pipe(pd.to_numeric, errors="coerce")
+        .fillna(0)
+    )
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+def ensure_numeric(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    df = df.copy()
+
+    for column in columns:
+        df[column] = parse_numeric(df[column]) if column in df.columns else 0
+
+    return df
+
+
+def parse_date_column(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce", dayfirst=True)
+    else:
+        df["date"] = pd.NaT
+
+    return df
+
+
+def safe_divide(numerator, denominator, multiplier=1):
+    return numerator.div(denominator.replace(0, pd.NA)).fillna(0) * multiplier
+
+
+def format_euro(value: float) -> str:
+    return f"€ {value:,.0f}".replace(",", ".") if not pd.isna(value) else "€ 0"
+
+
+def format_number(value: float) -> str:
+    return f"{value:,.0f}".replace(",", ".") if not pd.isna(value) else "0"
+
+
+def format_percent(value: float) -> str:
+    return f"{value:.1f}%".replace(".", ",") if not pd.isna(value) else "0,0%"
+
+
+def apply_plotly_layout(fig, height: int = 430):
+    fig.update_layout(
+        height=height,
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        font={"family": "Sofia Pro, Arial", "color": BRAND_GREEN},
+        margin={"l": 30, "r": 30, "t": 55, "b": 35},
+        hovermode="closest",
+        legend={"orientation": "h", "y": 1.08, "x": 0},
+    )
+
+    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(gridcolor="rgba(8, 68, 34, 0.08)")
+
+    return fig
+
+
+def add_space() -> None:
+    st.markdown('<div class="space"></div>', unsafe_allow_html=True)
+
+
+# ==========================================================
+# DATA LOADERS
+# ==========================================================
+
+@st.cache_data(ttl=300, show_spinner=False)
 def load_sheet(url: str) -> pd.DataFrame:
-    try:
-        response = requests.get(url, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-    except requests.RequestException as error:
-        st.error(f"Data kon niet worden opgehaald: {error}")
-        return pd.DataFrame()
-    except ValueError:
-        st.error("De databron gaf geen geldige JSON terug.")
+    response = requests.get(url, timeout=20)
+    response.raise_for_status()
+
+    data = response.json()
+
+    if not data:
         return pd.DataFrame()
 
     if isinstance(data, dict):
@@ -176,34 +251,25 @@ def load_sheet(url: str) -> pd.DataFrame:
     return normalize_columns(pd.DataFrame(data))
 
 
-def parse_numeric(series: pd.Series) -> pd.Series:
-    return pd.to_numeric(
-        series
-        .astype(str)
-        .str.replace("€", "", regex=False)
-        .str.replace("%", "", regex=False)
-        .str.replace(".", "", regex=False)
-        .str.replace(",", ".", regex=False),
-        errors="coerce",
-    )
+def load_all_data() -> dict[str, pd.DataFrame]:
+    return {
+        "landing": clean_landing(load_sheet(SHEET_URLS["landing"])),
+        "products": clean_products(load_sheet(SHEET_URLS["products"])),
+        "search": clean_search(load_sheet(SHEET_URLS["search"])),
+        "pagespeed": clean_pagespeed(load_sheet(SHEET_URLS["pagespeed"])),
+        "funnel": clean_funnel(load_sheet(SHEET_URLS["funnel"])),
+    }
 
 
-def convert_columns_to_numeric(
-    dataframe: pd.DataFrame,
-    columns: list[str],
-) -> pd.DataFrame:
-    dataframe = dataframe.copy()
+# ==========================================================
+# CLEANING
+# ==========================================================
 
-    for column in columns:
-        if column in dataframe.columns:
-            dataframe[column] = parse_numeric(dataframe[column])
+def clean_landing(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
 
-    return dataframe
-
-
-def clean_landing(dataframe: pd.DataFrame) -> pd.DataFrame:
-    dataframe = normalize_columns(dataframe)
-    dataframe = dataframe.rename(
+    df = normalize_columns(df).rename(
         columns={
             "landing_page": "landingpage",
             "sessies": "sessions",
@@ -214,8 +280,8 @@ def clean_landing(dataframe: pd.DataFrame) -> pd.DataFrame:
         }
     )
 
-    dataframe = convert_columns_to_numeric(
-        dataframe,
+    df = ensure_numeric(
+        df,
         [
             "sessions",
             "users",
@@ -226,25 +292,21 @@ def clean_landing(dataframe: pd.DataFrame) -> pd.DataFrame:
         ],
     )
 
-    if "date" in dataframe.columns:
-        dataframe["date"] = pd.to_datetime(dataframe["date"], errors="coerce")
+    df = parse_date_column(df)
 
-    if "bounce_rate" not in dataframe.columns:
-        dataframe["bounce_rate"] = 0
+    if "landingpage" not in df.columns:
+        df["landingpage"] = "Onbekend"
 
-    if "sessions" not in dataframe.columns:
-        dataframe["sessions"] = 0
+    df["bounce_impact_score"] = df["bounce_rate"] * df["sessions"]
 
-    dataframe["bounce_impact_score"] = (
-        dataframe["bounce_rate"] * dataframe["sessions"]
-    )
-
-    return dataframe
+    return df
 
 
-def clean_products(dataframe: pd.DataFrame) -> pd.DataFrame:
-    dataframe = normalize_columns(dataframe)
-    dataframe = dataframe.rename(
+def clean_products(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    df = normalize_columns(df).rename(
         columns={
             "product": "itemname",
             "views": "itemsviewed",
@@ -254,34 +316,35 @@ def clean_products(dataframe: pd.DataFrame) -> pd.DataFrame:
         }
     )
 
-    dataframe = convert_columns_to_numeric(
-        dataframe,
-        ["itemsviewed", "itemrevenue", "itemspurchased", "conversion_rate"],
+    df = ensure_numeric(
+        df,
+        [
+            "itemsviewed",
+            "itemrevenue",
+            "itemspurchased",
+            "conversion_rate",
+        ],
     )
 
-    if "date" in dataframe.columns:
-        dataframe["date"] = pd.to_datetime(dataframe["date"], errors="coerce")
+    df = parse_date_column(df)
 
-    if "itemsviewed" not in dataframe.columns:
-        dataframe["itemsviewed"] = 0
+    if "itemname" not in df.columns:
+        df["itemname"] = "Onbekend"
 
-    if "itemrevenue" not in dataframe.columns:
-        dataframe["itemrevenue"] = 0
+    df["revenue_per_view"] = safe_divide(df["itemrevenue"], df["itemsviewed"])
 
-    dataframe["revenue_per_view"] = (
-        dataframe["itemrevenue"] / dataframe["itemsviewed"].replace(0, pd.NA)
+    df["product_opportunity_score"] = (
+        df["itemsviewed"] / (df["itemrevenue"] + 1)
     ).fillna(0)
 
-    dataframe["product_opportunity_score"] = (
-        dataframe["itemsviewed"] / (dataframe["itemrevenue"] + 1)
-    ).fillna(0)
-
-    return dataframe
+    return df
 
 
-def clean_search(dataframe: pd.DataFrame) -> pd.DataFrame:
-    dataframe = normalize_columns(dataframe)
-    dataframe = dataframe.rename(
+def clean_search(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    df = normalize_columns(df).rename(
         columns={
             "zoekterm": "searchterm",
             "zoekopdrachten": "searches",
@@ -291,102 +354,85 @@ def clean_search(dataframe: pd.DataFrame) -> pd.DataFrame:
         }
     )
 
-    dataframe = convert_columns_to_numeric(
-        dataframe,
-        ["searches", "users", "results", "conversions"],
+    df = ensure_numeric(df, ["searches", "users", "results", "conversions"])
+    df = parse_date_column(df)
+
+    if "searchterm" not in df.columns:
+        df["searchterm"] = "Onbekend"
+
+    df["results_per_search"] = safe_divide(df["results"], df["searches"])
+    df["search_conversion_rate"] = safe_divide(
+        df["conversions"],
+        df["searches"],
+        100,
     )
 
-    if "date" in dataframe.columns:
-        dataframe["date"] = pd.to_datetime(dataframe["date"], errors="coerce")
-
-    for column in ["searches", "results", "conversions"]:
-        if column not in dataframe.columns:
-            dataframe[column] = 0
-
-    dataframe["results_per_search"] = (
-        dataframe["results"] / dataframe["searches"].replace(0, pd.NA)
-    ).fillna(0)
-
-    dataframe["search_conversion_rate"] = (
-        dataframe["conversions"] / dataframe["searches"].replace(0, pd.NA) * 100
-    ).fillna(0)
-
-    return dataframe
+    return df
 
 
-def clean_pagespeed(dataframe: pd.DataFrame) -> pd.DataFrame:
-    dataframe = normalize_columns(dataframe)
-    dataframe = dataframe.rename(columns={"pagina": "page"})
+def clean_pagespeed(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
 
-    dataframe = convert_columns_to_numeric(
-        dataframe,
-        ["mobile_speed", "desktop_speed"],
-    )
+    df = normalize_columns(df).rename(columns={"pagina": "page"})
+    df = ensure_numeric(df, ["mobile_speed", "desktop_speed"])
+    df = parse_date_column(df)
 
-    if "date" in dataframe.columns:
-        dataframe["date"] = pd.to_datetime(dataframe["date"], errors="coerce")
+    if "page" not in df.columns:
+        df["page"] = "Onbekend"
 
-    if "mobile_speed" in dataframe.columns:
-        dataframe["speed_score"] = dataframe["mobile_speed"]
-        dataframe["speed_risk"] = 100 - dataframe["mobile_speed"]
-    else:
-        dataframe["speed_score"] = 0
-        dataframe["speed_risk"] = 0
+    df["speed_score"] = df["mobile_speed"]
+    df["speed_risk"] = 100 - df["mobile_speed"]
 
-    return dataframe
+    return df
 
 
-def clean_funnel(dataframe: pd.DataFrame) -> pd.DataFrame:
-    dataframe = normalize_columns(dataframe)
-    dataframe = dataframe.rename(
+def clean_funnel(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    df = normalize_columns(df).rename(
         columns={
             "stap": "step",
             "aantal": "count",
         }
     )
 
-    dataframe = convert_columns_to_numeric(dataframe, ["count"])
-
-    if "date" in dataframe.columns:
-        dataframe["date"] = pd.to_datetime(dataframe["date"], errors="coerce")
-
-    return dataframe
-
-
-def filter_by_period(
-    dataframe: pd.DataFrame,
-    start_date,
-    end_date,
-) -> pd.DataFrame:
-    if dataframe.empty or "date" not in dataframe.columns:
-        return dataframe
-
-    dataframe = dataframe.copy()
-    dataframe["date"] = pd.to_datetime(dataframe["date"], errors="coerce")
-
-    return dataframe[
-        (dataframe["date"].dt.date >= start_date)
-        & (dataframe["date"].dt.date <= end_date)
-    ]
-
-
-def get_selected_period(dataframes: list[pd.DataFrame]) -> tuple:
-    date_sources = [
-        dataframe
-        for dataframe in dataframes
-        if not dataframe.empty and "date" in dataframe.columns
-    ]
-
-    if not date_sources:
-        st.sidebar.info("Geen datumkolommen gevonden voor periodefilter.")
-        return None, None, "alle beschikbare data"
-
-    all_dates = pd.concat(
-        [dataframe["date"] for dataframe in date_sources],
-        ignore_index=True,
+    df = ensure_numeric(
+        df,
+        [
+            "count",
+            "view_item",
+            "add_to_cart",
+            "begin_checkout",
+            "purchase",
+        ],
     )
 
-    all_dates = pd.to_datetime(all_dates, errors="coerce").dropna()
+    df = parse_date_column(df)
+
+    return df
+
+
+# ==========================================================
+# FILTERS
+# ==========================================================
+
+def get_selected_period(dataframes: list[pd.DataFrame]) -> tuple:
+    date_series = []
+
+    for df in dataframes:
+        if not df.empty and "date" in df.columns:
+            dates = pd.to_datetime(df["date"], errors="coerce").dropna()
+
+            if not dates.empty:
+                date_series.append(dates)
+
+    if not date_series:
+        st.sidebar.info("Geen datumkolommen gevonden.")
+        return None, None, "alle beschikbare data"
+
+    all_dates = pd.concat(date_series, ignore_index=True)
 
     min_date = all_dates.min().date()
     max_date = all_dates.max().date()
@@ -406,19 +452,15 @@ def get_selected_period(dataframes: list[pd.DataFrame]) -> tuple:
     if period_label == "Afgelopen 7 dagen":
         start_date = (pd.Timestamp(max_date) - pd.Timedelta(days=6)).date()
         end_date = max_date
-
     elif period_label == "Afgelopen 30 dagen":
         start_date = (pd.Timestamp(max_date) - pd.Timedelta(days=29)).date()
         end_date = max_date
-
     elif period_label == "Afgelopen 90 dagen":
         start_date = (pd.Timestamp(max_date) - pd.Timedelta(days=89)).date()
         end_date = max_date
-
     elif period_label == "Alles":
         start_date = min_date
         end_date = max_date
-
     else:
         selected_period = st.sidebar.date_input(
             "Aangepaste periode",
@@ -432,63 +474,82 @@ def get_selected_period(dataframes: list[pd.DataFrame]) -> tuple:
         else:
             start_date, end_date = min_date, max_date
 
-    period_text = f"{start_date} t/m {end_date}"
-
-    return start_date, end_date, period_text
+    return start_date, end_date, f"{start_date} t/m {end_date}"
 
 
-def format_euro(value: float) -> str:
-    if pd.isna(value):
-        return "€ 0"
+def filter_by_period(df: pd.DataFrame, start_date, end_date) -> pd.DataFrame:
+    if df.empty or "date" not in df.columns or start_date is None:
+        return df
 
-    return f"€ {value:,.0f}".replace(",", ".")
-
-
-def format_number(value: float) -> str:
-    if pd.isna(value):
-        return "0"
-
-    return f"{value:,.0f}".replace(",", ".")
+    return df[
+        df["date"].between(
+            pd.Timestamp(start_date),
+            pd.Timestamp(end_date),
+        )
+    ]
 
 
-def format_percent(value: float) -> str:
-    if pd.isna(value):
-        return "0,0%"
+def render_sidebar(data: dict[str, pd.DataFrame]) -> dict:
+    st.sidebar.markdown("## Van Duinkerken")
+    st.sidebar.markdown("Website optimizations")
+    st.sidebar.divider()
 
-    return f"{value:.1f}%".replace(".", ",")
+    start_date, end_date, period_text = get_selected_period(list(data.values()))
+
+    filtered = {
+        key: filter_by_period(df, start_date, end_date)
+        for key, df in data.items()
+    }
+
+    settings = {
+        "period_text": period_text,
+        "minimum_sessions": st.sidebar.slider(
+            "Minimale sessies pagina's",
+            min_value=0,
+            max_value=1000,
+            value=0,
+            step=50,
+        ),
+        "minimum_product_views": st.sidebar.slider(
+            "Minimale productviews",
+            min_value=0,
+            max_value=1000,
+            value=0,
+            step=50,
+        ),
+        "mobile_speed_threshold": st.sidebar.slider(
+            "Mobiele speed score drempel",
+            min_value=0,
+            max_value=100,
+            value=50,
+            step=5,
+        ),
+        "show_raw_data": st.sidebar.toggle(
+            "Toon ruwe tabellen",
+            value=False,
+        ),
+    }
+
+    return {"data": filtered, "settings": settings}
 
 
-def apply_plotly_layout(fig: go.Figure, height: int = 430) -> go.Figure:
-    fig.update_layout(
-        height=height,
-        paper_bgcolor="#ffffff",
-        plot_bgcolor="#ffffff",
-        font={"family": "Sofia Pro, Arial", "color": BRAND_GREEN},
-        margin={"l": 30, "r": 30, "t": 55, "b": 35},
-        hovermode="closest",
-        legend={"orientation": "h", "y": 1.08, "x": 0},
-    )
-
-    fig.update_xaxes(showgrid=False)
-    fig.update_yaxes(gridcolor="rgba(8, 68, 34, 0.08)")
-
-    return fig
-
+# ==========================================================
+# DERIVED DATA
+# ==========================================================
 
 def create_funnel_data(funnel: pd.DataFrame) -> pd.DataFrame:
+    if funnel.empty:
+        return pd.DataFrame()
+
     if {"step", "count"}.issubset(funnel.columns):
-        funnel_data = funnel[["step", "count"]].copy()
-        funnel_data = funnel_data.rename(
-            columns={
-                "step": "Stap",
-                "count": "Aantal",
-            }
+        funnel_data = (
+            funnel.groupby("step", as_index=False)["count"]
+            .sum()
+            .rename(columns={"step": "Stap", "count": "Aantal"})
         )
     else:
         funnel_columns = ["view_item", "add_to_cart", "begin_checkout", "purchase"]
-        available_columns = [
-            column for column in funnel_columns if column in funnel.columns
-        ]
+        available_columns = [col for col in funnel_columns if col in funnel.columns]
 
         if not available_columns:
             return pd.DataFrame()
@@ -502,14 +563,22 @@ def create_funnel_data(funnel: pd.DataFrame) -> pd.DataFrame:
 
         funnel_data = pd.DataFrame(
             {
-                "Stap": [labels[column] for column in available_columns],
-                "Aantal": [funnel[column].sum() for column in available_columns],
+                "Stap": [labels[col] for col in available_columns],
+                "Aantal": [funnel[col].sum() for col in available_columns],
             }
         )
 
+    funnel_data = funnel_data[funnel_data["Aantal"] > 0].copy()
+
+    if funnel_data.empty:
+        return funnel_data
+
     funnel_data["Conversie vanaf vorige stap"] = (
-        funnel_data["Aantal"] / funnel_data["Aantal"].shift(1) * 100
-    ).fillna(100)
+        funnel_data["Aantal"]
+        .div(funnel_data["Aantal"].shift(1))
+        .fillna(1)
+        * 100
+    )
 
     funnel_data["Uitval vanaf vorige stap"] = (
         100 - funnel_data["Conversie vanaf vorige stap"]
@@ -517,6 +586,63 @@ def create_funnel_data(funnel: pd.DataFrame) -> pd.DataFrame:
 
     return funnel_data
 
+
+def calculate_metrics(
+    landing: pd.DataFrame,
+    products: pd.DataFrame,
+    search: pd.DataFrame,
+    pagespeed: pd.DataFrame,
+    settings: dict,
+) -> dict:
+    average_conversion = (
+        landing["conversion_rate"].mean()
+        if not landing.empty and "conversion_rate" in landing.columns
+        else 0
+    )
+
+    average_mobile_speed = (
+        pagespeed["mobile_speed"].mean()
+        if not pagespeed.empty and "mobile_speed" in pagespeed.columns
+        else 0
+    )
+
+    average_desktop_speed = (
+        pagespeed["desktop_speed"].mean()
+        if not pagespeed.empty and "desktop_speed" in pagespeed.columns
+        else 0
+    )
+
+    total_searches = (
+        search["searches"].sum()
+        if not search.empty and "searches" in search.columns
+        else 0
+    )
+
+    slow_pages_count = (
+        len(pagespeed[pagespeed["mobile_speed"] < settings["mobile_speed_threshold"]])
+        if not pagespeed.empty and "mobile_speed" in pagespeed.columns
+        else 0
+    )
+
+    product_opportunities = (
+        len(products[products["itemsviewed"] >= settings["minimum_product_views"]])
+        if not products.empty and "itemsviewed" in products.columns
+        else 0
+    )
+
+    return {
+        "average_conversion": average_conversion,
+        "average_mobile_speed": average_mobile_speed,
+        "average_desktop_speed": average_desktop_speed,
+        "total_searches": total_searches,
+        "slow_pages_count": slow_pages_count,
+        "product_opportunities": product_opportunities,
+    }
+
+
+# ==========================================================
+# RENDER
+# ==========================================================
 
 def render_header(period_text: str) -> None:
     st.markdown(
@@ -535,500 +661,341 @@ def render_header(period_text: str) -> None:
     )
 
 
-def add_space() -> None:
-    st.markdown('<div class="space"></div>', unsafe_allow_html=True)
+def render_metrics(metrics: dict) -> None:
+    cols = st.columns(5)
 
-
-with st.spinner("Optimalisatiedata laden..."):
-    landing = clean_landing(load_sheet(SHEET_URLS["landing"]))
-    products = clean_products(load_sheet(SHEET_URLS["products"]))
-    search = clean_search(load_sheet(SHEET_URLS["search"]))
-    pagespeed = clean_pagespeed(load_sheet(SHEET_URLS["pagespeed"]))
-    funnel = clean_funnel(load_sheet(SHEET_URLS["funnel"]))
-
-
-st.sidebar.markdown("## Van Duinkerken")
-st.sidebar.markdown("Website optimizations")
-st.sidebar.divider()
-
-start_date, end_date, period_text = get_selected_period(
-    [landing, products, search, pagespeed, funnel]
-)
-
-if start_date is not None and end_date is not None:
-    landing = filter_by_period(landing, start_date, end_date)
-    products = filter_by_period(products, start_date, end_date)
-    search = filter_by_period(search, start_date, end_date)
-    pagespeed = filter_by_period(pagespeed, start_date, end_date)
-    funnel = filter_by_period(funnel, start_date, end_date)
-
-
-minimum_sessions = st.sidebar.slider(
-    "Minimale sessies pagina's",
-    min_value=0,
-    max_value=1000,
-    value=0,
-    step=50,
-)
-
-minimum_product_views = st.sidebar.slider(
-    "Minimale productviews",
-    min_value=0,
-    max_value=1000,
-    value=0,
-    step=50,
-)
-
-mobile_speed_threshold = st.sidebar.slider(
-    "Mobiele speed score drempel",
-    min_value=0,
-    max_value=100,
-    value=50,
-    step=5,
-)
-
-show_raw_data = st.sidebar.toggle("Toon ruwe tabellen", value=False)
-
-
-average_conversion = (
-    landing["conversion_rate"].mean()
-    if "conversion_rate" in landing.columns
-    else 0
-)
-
-average_mobile_speed = (
-    pagespeed["mobile_speed"].mean()
-    if "mobile_speed" in pagespeed.columns
-    else 0
-)
-
-average_desktop_speed = (
-    pagespeed["desktop_speed"].mean()
-    if "desktop_speed" in pagespeed.columns
-    else 0
-)
-
-total_searches = (
-    search["searches"].sum()
-    if "searches" in search.columns
-    else 0
-)
-
-slow_pages_count = (
-    len(pagespeed[pagespeed["mobile_speed"] < mobile_speed_threshold])
-    if "mobile_speed" in pagespeed.columns
-    else 0
-)
-
-product_opportunities = (
-    len(products[products["itemsviewed"] >= minimum_product_views])
-    if "itemsviewed" in products.columns
-    else len(products)
-)
-
-
-render_header(period_text)
-
-metric_col1, metric_col2, metric_col3, metric_col4, metric_col5 = st.columns(5)
-
-with metric_col1:
-    st.metric("Gem. conversie", format_percent(average_conversion))
-
-with metric_col2:
-    st.metric("Mobiele speed", f"{average_mobile_speed:.0f}/100")
-
-with metric_col3:
-    st.metric("Desktop speed", f"{average_desktop_speed:.0f}/100")
-
-with metric_col4:
-    st.metric("Zoekopdrachten", format_number(total_searches))
-
-with metric_col5:
-    st.metric("Productkansen", format_number(product_opportunities))
-
-
-add_space()
-
-tab_overview, tab_pages, tab_products, tab_search, tab_speed, tab_funnel, tab_tasks, tab_data = st.tabs(
-    [
-        "Overzicht",
-        "Pagina's",
-        "Producten",
-        "Zoekfunctie",
-        "Snelheid",
-        "Funnel",
-        "Taken",
-        "Data",
+    kpis = [
+        ("Gem. conversie", format_percent(metrics["average_conversion"])),
+        ("Mobiele speed", f"{metrics['average_mobile_speed']:.0f}/100"),
+        ("Desktop speed", f"{metrics['average_desktop_speed']:.0f}/100"),
+        ("Zoekopdrachten", format_number(metrics["total_searches"])),
+        ("Productkansen", format_number(metrics["product_opportunities"])),
     ]
-)
+
+    for col, (label, value) in zip(cols, kpis):
+        col.metric(label, value)
 
 
-with tab_overview:
-    insight_col1, insight_col2, insight_col3 = st.columns(3)
+def insight_card(title: str, text: str) -> None:
+    st.markdown(
+        f"""
+        <div class="insight-card">
+            <h4>{title}</h4>
+            <p>{text}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    with insight_col1:
-        st.markdown(
-            f"""
-            <div class="insight-card">
-                <h4>Pagina's</h4>
-                <p>
-                    Gemiddelde conversie is <strong>{format_percent(average_conversion)}</strong>.
-                    Analyseer pagina's met veel sessies maar weinig transacties.
-                </p>
-            </div>
-            """,
-            unsafe_allow_html=True,
+
+def render_overview_tab(
+    landing: pd.DataFrame,
+    funnel: pd.DataFrame,
+    metrics: dict,
+    settings: dict,
+) -> None:
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        insight_card(
+            "Pagina's",
+            f"Gemiddelde conversie is <strong>{format_percent(metrics['average_conversion'])}</strong>. "
+            "Analyseer pagina's met veel sessies maar weinig transacties.",
         )
 
-    with insight_col2:
-        st.markdown(
-            f"""
-            <div class="insight-card">
-                <h4>Performance</h4>
-                <p>
-                    Gemiddelde mobiele speed score is
-                    <strong>{average_mobile_speed:.0f}/100</strong>.
-                    Er zijn <strong>{format_number(slow_pages_count)}</strong>
-                    pagina's onder de ingestelde drempel.
-                </p>
-            </div>
-            """,
-            unsafe_allow_html=True,
+    with col2:
+        insight_card(
+            "Performance",
+            f"Gemiddelde mobiele speed score is <strong>{metrics['average_mobile_speed']:.0f}/100</strong>. "
+            f"Er zijn <strong>{format_number(metrics['slow_pages_count'])}</strong> pagina's onder de drempel.",
         )
 
-    with insight_col3:
-        st.markdown(
-            f"""
-            <div class="insight-card">
-                <h4>Zoekfunctie</h4>
-                <p>
-                    Er zijn <strong>{format_number(total_searches)}</strong>
-                    zoekopdrachten. Populaire zoektermen zijn directe
-                    UX- en assortimentssignalen.
-                </p>
-            </div>
-            """,
-            unsafe_allow_html=True,
+    with col3:
+        insight_card(
+            "Zoekfunctie",
+            f"Er zijn <strong>{format_number(metrics['total_searches'])}</strong> zoekopdrachten. "
+            "Populaire zoektermen zijn directe UX- en assortimentssignalen.",
         )
 
     add_space()
 
-    overview_col1, overview_col2 = st.columns(2)
+    col1, col2 = st.columns(2)
 
-    with overview_col1:
-        if {"landingpage", "sessions", "conversion_rate"}.issubset(landing.columns):
-            page_data = landing[landing["sessions"] >= minimum_sessions].copy()
+    with col1:
+        render_page_sessions_chart(landing, settings, height=520)
 
-            page_data = page_data.sort_values(
-                ["sessions", "conversion_rate"],
-                ascending=[False, True],
-            ).head(10)
-
-            page_fig = px.bar(
-                page_data,
-                x="sessions",
-                y="landingpage",
-                orientation="h",
-                title="Pagina's met veel sessies",
-                color="conversion_rate",
-                color_continuous_scale="Greens",
-            )
-
-            page_fig.update_layout(yaxis={"categoryorder": "total ascending"})
-
-            st.plotly_chart(
-                apply_plotly_layout(page_fig, height=520),
-                use_container_width=True,
-            )
-
-    with overview_col2:
-        funnel_data = create_funnel_data(funnel)
-
-        if not funnel_data.empty:
-            funnel_fig = px.funnel(
-                funnel_data,
-                x="Aantal",
-                y="Stap",
-                title="Checkout funnel",
-                color_discrete_sequence=[BRAND_GREEN],
-            )
-
-            st.plotly_chart(
-                apply_plotly_layout(funnel_fig, height=520),
-                use_container_width=True,
-            )
+    with col2:
+        render_funnel_chart(funnel, height=520)
 
 
-with tab_pages:
+def render_page_sessions_chart(
+    landing: pd.DataFrame,
+    settings: dict,
+    height: int = 620,
+) -> None:
+    required = {"landingpage", "sessions", "conversion_rate"}
+
+    if landing.empty or not required.issubset(landing.columns):
+        st.info("Geen bruikbare landingpage-data beschikbaar.")
+        return
+
+    page_data = landing[landing["sessions"] >= settings["minimum_sessions"]].copy()
+
+    if page_data.empty:
+        st.info("Geen pagina's boven het ingestelde minimum aantal sessies.")
+        return
+
+    page_data = page_data.sort_values(
+        ["sessions", "conversion_rate"],
+        ascending=[False, True],
+    ).head(15)
+
+    fig = px.bar(
+        page_data,
+        x="sessions",
+        y="landingpage",
+        orientation="h",
+        text="sessions",
+        title="Pagina's met meeste sessies en conversiekans",
+        color="conversion_rate",
+        color_continuous_scale=["#dfe7df", "#7d9b88", BRAND_GREEN],
+    )
+
+    fig.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+    fig.update_layout(yaxis={"categoryorder": "total ascending"})
+
+    st.plotly_chart(apply_plotly_layout(fig, height=height), use_container_width=True)
+
+
+def render_pages_tab(landing: pd.DataFrame, settings: dict) -> None:
     st.subheader("Pagina's met optimalisatiekansen")
 
-    if landing.empty:
-        st.warning("Geen landingpage-data gevonden voor deze periode.")
-    elif not {"landingpage", "sessions"}.issubset(landing.columns):
-        st.warning("Landingpage-data mist `landingpage` of `sessions`.")
-    else:
-        page_data = landing[landing["sessions"] >= minimum_sessions].copy()
+    render_page_sessions_chart(landing, settings)
 
+    if not landing.empty:
+        page_data = landing[landing["sessions"] >= settings["minimum_sessions"]].copy()
         page_data = page_data.sort_values(
             ["sessions", "conversion_rate"],
             ascending=[False, True],
         )
 
-        page_fig = px.bar(
-            page_data.head(15),
-            x="sessions",
-            y="landingpage",
-            orientation="h",
-            text="sessions",
-            title="Pagina's met meeste sessies en conversiekans",
-            color="conversion_rate" if "conversion_rate" in page_data.columns else None,
-            color_continuous_scale="Greens",
-        )
-
-        page_fig.update_traces(
-            texttemplate="%{text:,.0f}",
-            textposition="outside",
-        )
-
-        page_fig.update_layout(yaxis={"categoryorder": "total ascending"})
-
-        st.plotly_chart(
-            apply_plotly_layout(page_fig, height=620),
-            use_container_width=True,
-        )
-
-        page_columns = [
-            column
-            for column in [
-                "date",
-                "landingpage",
-                "sessions",
-                "users",
-                "transactions",
-                "revenue",
-                "conversion_rate",
-            ]
-            if column in page_data.columns
+        columns = [
+            "date",
+            "landingpage",
+            "sessions",
+            "users",
+            "transactions",
+            "revenue",
+            "conversion_rate",
+            "bounce_rate",
+            "bounce_impact_score",
         ]
 
         st.dataframe(
-            page_data[page_columns],
+            page_data[[col for col in columns if col in page_data.columns]],
             use_container_width=True,
             hide_index=True,
         )
 
 
-with tab_products:
+def render_products_tab(products: pd.DataFrame, settings: dict) -> None:
     st.subheader("Producten met hoge views maar lage omzet")
 
-    if products.empty:
-        st.warning("Geen productdata gevonden voor deze periode.")
-    elif not {"itemname", "itemsviewed", "itemrevenue"}.issubset(products.columns):
-        st.warning("Productdata mist `product`, `views` of `omzet`.")
-    else:
-        product_data = products[
-            products["itemsviewed"] >= minimum_product_views
-        ].copy()
+    required = {"itemname", "itemsviewed", "itemrevenue"}
 
-        product_data = product_data.sort_values(
-            "product_opportunity_score",
-            ascending=False,
-        )
+    if products.empty or not required.issubset(products.columns):
+        st.warning("Geen bruikbare productdata gevonden.")
+        return
 
-        scatter_fig = px.scatter(
-            product_data,
-            x="itemsviewed",
-            y="itemrevenue",
-            size="itemsviewed",
-            color="conversion_rate" if "conversion_rate" in product_data.columns else None,
-            hover_name="itemname",
-            title="Productviews versus omzet",
-            color_continuous_scale="Greens",
-        )
+    product_data = products[
+        products["itemsviewed"] >= settings["minimum_product_views"]
+    ].copy()
 
-        scatter_fig.update_yaxes(tickprefix="€ ")
+    if product_data.empty:
+        st.info("Geen producten boven het ingestelde minimum aantal views.")
+        return
 
-        st.plotly_chart(
-            apply_plotly_layout(scatter_fig, height=560),
-            use_container_width=True,
-        )
+    product_data = product_data.sort_values(
+        "product_opportunity_score",
+        ascending=False,
+    )
 
-        product_columns = [
-            column
-            for column in [
-                "date",
-                "itemname",
-                "itemsviewed",
-                "itemspurchased",
-                "itemrevenue",
-                "conversion_rate",
-                "revenue_per_view",
-                "product_opportunity_score",
-            ]
-            if column in product_data.columns
-        ]
+    fig = px.scatter(
+        product_data,
+        x="itemsviewed",
+        y="itemrevenue",
+        size="itemsviewed",
+        color="conversion_rate" if "conversion_rate" in product_data.columns else None,
+        hover_name="itemname",
+        title="Productviews versus omzet",
+        color_continuous_scale=["#dfe7df", "#7d9b88", BRAND_GREEN],
+    )
 
-        st.dataframe(
-            product_data[product_columns],
-            use_container_width=True,
-            hide_index=True,
-        )
+    fig.update_yaxes(tickprefix="€ ")
+
+    st.plotly_chart(apply_plotly_layout(fig, height=560), use_container_width=True)
+
+    columns = [
+        "date",
+        "itemname",
+        "itemsviewed",
+        "itemspurchased",
+        "itemrevenue",
+        "conversion_rate",
+        "revenue_per_view",
+        "product_opportunity_score",
+    ]
+
+    st.dataframe(
+        product_data[[col for col in columns if col in product_data.columns]],
+        use_container_width=True,
+        hide_index=True,
+    )
 
 
-with tab_search:
+def render_search_tab(search: pd.DataFrame) -> None:
     st.subheader("Populaire zoektermen")
 
-    if search.empty:
-        st.warning("Geen site-search data gevonden voor deze periode.")
-    elif not {"searchterm", "searches"}.issubset(search.columns):
-        st.warning("Search-data mist `zoekterm` of `zoekopdrachten`.")
-    else:
-        search_data = search.copy()
-        search_data = search_data[
-            search_data["searchterm"].astype(str).str.len() > 0
-        ]
-        search_data = search_data.sort_values("searches", ascending=False)
+    if search.empty or not {"searchterm", "searches"}.issubset(search.columns):
+        st.warning("Geen bruikbare site-search data gevonden.")
+        return
 
-        search_fig = px.bar(
-            search_data.head(15),
-            x="searches",
-            y="searchterm",
-            orientation="h",
-            text="searches",
-            title="Meest gebruikte zoektermen",
-            color_discrete_sequence=[BRAND_GREEN],
-        )
+    search_data = search.copy()
+    search_data = search_data[search_data["searchterm"].astype(str).str.len() > 0]
+    search_data = search_data.sort_values("searches", ascending=False)
 
-        search_fig.update_traces(
-            texttemplate="%{text:,.0f}",
-            textposition="outside",
-        )
+    if search_data.empty:
+        st.info("Geen zoektermen beschikbaar.")
+        return
 
-        search_fig.update_layout(yaxis={"categoryorder": "total ascending"})
+    fig = px.bar(
+        search_data.head(15),
+        x="searches",
+        y="searchterm",
+        orientation="h",
+        text="searches",
+        title="Meest gebruikte zoektermen",
+        color_discrete_sequence=[BRAND_GREEN],
+    )
 
-        st.plotly_chart(
-            apply_plotly_layout(search_fig, height=560),
-            use_container_width=True,
-        )
+    fig.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+    fig.update_layout(yaxis={"categoryorder": "total ascending"})
 
-        search_columns = [
-            column
-            for column in [
-                "date",
-                "searchterm",
-                "searches",
-                "users",
-                "results",
-                "conversions",
-            ]
-            if column in search_data.columns
-        ]
+    st.plotly_chart(apply_plotly_layout(fig, height=560), use_container_width=True)
 
-        st.dataframe(
-            search_data[search_columns],
-            use_container_width=True,
-            hide_index=True,
-        )
+    columns = [
+        "date",
+        "searchterm",
+        "searches",
+        "users",
+        "results",
+        "conversions",
+        "results_per_search",
+        "search_conversion_rate",
+    ]
+
+    st.dataframe(
+        search_data[[col for col in columns if col in search_data.columns]],
+        use_container_width=True,
+        hide_index=True,
+    )
 
 
-with tab_speed:
+def render_speed_tab(pagespeed: pd.DataFrame) -> None:
     st.subheader("Page speed")
 
-    if pagespeed.empty:
-        st.warning("Geen page-speed data gevonden voor deze periode.")
-    elif not {"page", "mobile_speed", "desktop_speed"}.issubset(pagespeed.columns):
-        st.warning("Page-speed data mist `pagina`, `mobile_speed` of `desktop_speed`.")
-    else:
-        speed_data = pagespeed.sort_values("mobile_speed", ascending=True).copy()
+    required = {"page", "mobile_speed", "desktop_speed"}
 
-        speed_long = speed_data.melt(
-            id_vars="page",
-            value_vars=["mobile_speed", "desktop_speed"],
-            var_name="Device",
-            value_name="Score",
-        )
+    if pagespeed.empty or not required.issubset(pagespeed.columns):
+        st.warning("Geen bruikbare page-speed data gevonden.")
+        return
 
-        speed_fig = px.bar(
-            speed_long,
-            x="Score",
-            y="page",
-            color="Device",
-            orientation="h",
-            barmode="group",
-            title="Mobiele en desktop speed score",
-            color_discrete_sequence=[SOFT_RED, BRAND_GREEN],
-        )
+    speed_data = pagespeed.sort_values("mobile_speed", ascending=True).copy()
 
-        speed_fig.update_layout(yaxis={"categoryorder": "total ascending"})
+    speed_long = speed_data.melt(
+        id_vars="page",
+        value_vars=["mobile_speed", "desktop_speed"],
+        var_name="Device",
+        value_name="Score",
+    )
 
-        st.plotly_chart(
-            apply_plotly_layout(speed_fig, height=620),
-            use_container_width=True,
-        )
+    fig = px.bar(
+        speed_long,
+        x="Score",
+        y="page",
+        color="Device",
+        orientation="h",
+        barmode="group",
+        title="Mobiele en desktop speed score",
+        color_discrete_sequence=[SOFT_RED, BRAND_GREEN],
+    )
 
-        speed_columns = [
-            column
-            for column in [
-                "date",
-                "page",
-                "mobile_speed",
-                "desktop_speed",
-                "speed_risk",
-            ]
-            if column in speed_data.columns
-        ]
+    fig.update_layout(yaxis={"categoryorder": "total ascending"})
 
-        st.dataframe(
-            speed_data[speed_columns],
-            use_container_width=True,
-            hide_index=True,
-        )
+    st.plotly_chart(apply_plotly_layout(fig, height=620), use_container_width=True)
+
+    columns = ["date", "page", "mobile_speed", "desktop_speed", "speed_risk"]
+
+    st.dataframe(
+        speed_data[[col for col in columns if col in speed_data.columns]],
+        use_container_width=True,
+        hide_index=True,
+    )
 
 
-with tab_funnel:
+def render_funnel_chart(funnel: pd.DataFrame, height: int = 540) -> None:
+    funnel_data = create_funnel_data(funnel)
+
+    if funnel_data.empty:
+        st.info("Geen bruikbare funneldata gevonden.")
+        return
+
+    fig = px.funnel(
+        funnel_data,
+        x="Aantal",
+        y="Stap",
+        title="Checkout funnel",
+        color_discrete_sequence=[BRAND_GREEN],
+    )
+
+    st.plotly_chart(apply_plotly_layout(fig, height=height), use_container_width=True)
+
+
+def render_funnel_tab(funnel: pd.DataFrame) -> None:
     st.subheader("Checkout funnel")
 
     funnel_data = create_funnel_data(funnel)
 
     if funnel_data.empty:
-        st.warning("Geen bruikbare funneldata gevonden voor deze periode.")
-    else:
-        funnel_fig = px.funnel(
-            funnel_data,
-            x="Aantal",
-            y="Stap",
-            title="Van sessie naar aankoop",
-            color_discrete_sequence=[BRAND_GREEN],
-        )
+        st.warning("Geen bruikbare funneldata gevonden.")
+        return
 
-        st.plotly_chart(
-            apply_plotly_layout(funnel_fig, height=540),
-            use_container_width=True,
-        )
+    render_funnel_chart(funnel)
 
-        st.dataframe(
-            funnel_data.assign(
-                Aantal=funnel_data["Aantal"].map(format_number),
-                **{
-                    "Conversie vanaf vorige stap": funnel_data[
-                        "Conversie vanaf vorige stap"
-                    ].map(format_percent),
-                    "Uitval vanaf vorige stap": funnel_data[
-                        "Uitval vanaf vorige stap"
-                    ].map(format_percent),
-                },
-            ),
-            use_container_width=True,
-            hide_index=True,
-        )
+    display_df = funnel_data.copy()
+    display_df["Aantal"] = display_df["Aantal"].map(format_number)
+    display_df["Conversie vanaf vorige stap"] = display_df[
+        "Conversie vanaf vorige stap"
+    ].map(format_percent)
+    display_df["Uitval vanaf vorige stap"] = display_df[
+        "Uitval vanaf vorige stap"
+    ].map(format_percent)
+
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
 
 
-with tab_tasks:
+def render_tasks_tab(
+    products: pd.DataFrame,
+    search: pd.DataFrame,
+    funnel: pd.DataFrame,
+    metrics: dict,
+    settings: dict,
+) -> None:
     st.subheader("Automatische optimalisatietaken")
 
     tasks = []
 
-    if average_mobile_speed < mobile_speed_threshold:
+    if metrics["average_mobile_speed"] < settings["mobile_speed_threshold"]:
         tasks.append(
             {
                 "Prioriteit": "Hoog",
@@ -1039,7 +1006,7 @@ with tab_tasks:
             }
         )
 
-    if product_opportunities > 0:
+    if metrics["product_opportunities"] > 0:
         tasks.append(
             {
                 "Prioriteit": "Middel",
@@ -1050,7 +1017,7 @@ with tab_tasks:
             }
         )
 
-    if total_searches > 0:
+    if metrics["total_searches"] > 0:
         tasks.append(
             {
                 "Prioriteit": "Middel",
@@ -1063,7 +1030,7 @@ with tab_tasks:
 
     funnel_data = create_funnel_data(funnel)
 
-    if not funnel_data.empty and "Uitval vanaf vorige stap" in funnel_data.columns:
+    if not funnel_data.empty:
         highest_drop = funnel_data.sort_values(
             "Uitval vanaf vorige stap",
             ascending=False,
@@ -1080,54 +1047,114 @@ with tab_tasks:
         )
 
     if tasks:
-        st.dataframe(
-            pd.DataFrame(tasks),
-            use_container_width=True,
-            hide_index=True,
-        )
+        st.dataframe(pd.DataFrame(tasks), use_container_width=True, hide_index=True)
     else:
         st.info("Geen automatische taken gevonden op basis van de huidige instellingen.")
 
 
-with tab_data:
+def render_data_tab(data: dict[str, pd.DataFrame], show_raw_data: bool) -> None:
     st.subheader("Datakwaliteit")
 
-    data_col1, data_col2, data_col3, data_col4, data_col5 = st.columns(5)
+    cols = st.columns(5)
 
-    with data_col1:
-        st.metric("Landingpages", len(landing))
+    labels = [
+        ("Landingpages", "landing"),
+        ("Producten", "products"),
+        ("Zoektermen", "search"),
+        ("Speed pages", "pagespeed"),
+        ("Funnel-rijen", "funnel"),
+    ]
 
-    with data_col2:
-        st.metric("Producten", len(products))
+    for col, (label, key) in zip(cols, labels):
+        col.metric(label, len(data[key]))
 
-    with data_col3:
-        st.metric("Zoektermen", len(search))
-
-    with data_col4:
-        st.metric("Speed pages", len(pagespeed))
-
-    with data_col5:
-        st.metric("Funnel-rijen", len(funnel))
-
-    if show_raw_data:
-        add_space()
-
-        st.subheader("Landingpages")
-        st.dataframe(landing, use_container_width=True, hide_index=True)
-
-        st.subheader("Products")
-        st.dataframe(products, use_container_width=True, hide_index=True)
-
-        st.subheader("Search")
-        st.dataframe(search, use_container_width=True, hide_index=True)
-
-        st.subheader("Page speed")
-        st.dataframe(pagespeed, use_container_width=True, hide_index=True)
-
-        st.subheader("Funnel")
-        st.dataframe(funnel, use_container_width=True, hide_index=True)
-    else:
+    if not show_raw_data:
         st.info("Zet 'Toon ruwe tabellen' aan in de sidebar om de brondata te bekijken.")
+        return
+
+    add_space()
+
+    for label, key in labels:
+        st.subheader(label)
+        st.dataframe(data[key], use_container_width=True, hide_index=True)
 
 
-st.caption("Van Duinkerken Website Optimization Dashboard · Streamlit · Plotly · Google Sheets")
+# ==========================================================
+# MAIN
+# ==========================================================
+
+def main() -> None:
+    with st.spinner("Optimalisatiedata laden..."):
+        try:
+            raw_data = load_all_data()
+        except Exception as error:
+            st.error(f"Data kon niet worden geladen: {error}")
+            return
+
+    sidebar_result = render_sidebar(raw_data)
+    data = sidebar_result["data"]
+    settings = sidebar_result["settings"]
+
+    landing = data["landing"]
+    products = data["products"]
+    search = data["search"]
+    pagespeed = data["pagespeed"]
+    funnel = data["funnel"]
+
+    metrics = calculate_metrics(
+        landing,
+        products,
+        search,
+        pagespeed,
+        settings,
+    )
+
+    render_header(settings["period_text"])
+    render_metrics(metrics)
+
+    add_space()
+
+    tabs = st.tabs(
+        [
+            "Overzicht",
+            "Pagina's",
+            "Producten",
+            "Zoekfunctie",
+            "Snelheid",
+            "Funnel",
+            "Taken",
+            "Data",
+        ]
+    )
+
+    with tabs[0]:
+        render_overview_tab(landing, funnel, metrics, settings)
+
+    with tabs[1]:
+        render_pages_tab(landing, settings)
+
+    with tabs[2]:
+        render_products_tab(products, settings)
+
+    with tabs[3]:
+        render_search_tab(search)
+
+    with tabs[4]:
+        render_speed_tab(pagespeed)
+
+    with tabs[5]:
+        render_funnel_tab(funnel)
+
+    with tabs[6]:
+        render_tasks_tab(products, search, funnel, metrics, settings)
+
+    with tabs[7]:
+        render_data_tab(data, settings["show_raw_data"])
+
+    st.caption(
+        "Van Duinkerken Website Optimization Dashboard · Streamlit · Plotly · Google Sheets"
+    )
+
+
+if __name__ == "__main__":
+    main()
