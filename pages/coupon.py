@@ -201,13 +201,14 @@ def load_data():
 
 def clean_data(df):
 
-    numeric_cols = [
-        "openstaand",
-        "ingeleverd",
-        "verlopen",
-        "orders",
-        "revenue",
-    ]
+numeric_cols = [
+    "verzonden",
+    "openstaand",
+    "ingeleverd",
+    "verlopen",
+    "discount",
+    "omzet",
+]
 
     for col in numeric_cols:
 
@@ -230,10 +231,10 @@ def clean_data(df):
             df["coupon_code"] != ""
         ]
 
-    if "date" in df.columns:
+    if "datum" in df.columns:
 
-        df["date"] = pd.to_datetime(
-            df["date"],
+        df["datum"] = pd.to_datumtime(
+            df["datum"],
             errors="coerce",
         )
 
@@ -294,26 +295,26 @@ if selected_coupon != "Alle coupons":
     ]
 
 if (
-    "date" in df.columns
-    and df["date"].notna().any()
+    "datum" in df.columns
+    and df["datum"].notna().any()
 ):
 
-    min_date = df["date"].min().date()
-    max_date = df["date"].max().date()
+    min_datum = df["datum"].min().datum()
+    max_datum = df["datum"].max().datum()
 
-    selected_dates = st.sidebar.date_input(
+    selected_datums = st.sidebar.datum_input(
         "Periode",
-        value=(min_date, max_date),
+        value=(min_datum, max_datum),
     )
 
-    if len(selected_dates) == 2:
+    if len(selected_datums) == 2:
 
-        start_date, end_date = selected_dates
+        start_datum, end_datum = selected_datums
 
         df = df[
-            df["date"].between(
-                pd.Timestamp(start_date),
-                pd.Timestamp(end_date),
+            df["datum"].between(
+                pd.Timestamp(start_datum),
+                pd.Timestamp(end_datum),
             )
         ]
 
@@ -325,21 +326,29 @@ total_openstaand = df["openstaand"].sum()
 total_ingeleverd = df["ingeleverd"].sum()
 total_verlopen = df["verlopen"].sum()
 
-total_coupons = (
-    total_openstaand
-    + total_ingeleverd
-    + total_verlopen
-)
+total_verzonden = df["verzonden"].sum()
+total_openstaand = df["openstaand"].sum()
+total_ingeleverd = df["ingeleverd"].sum()
+total_verlopen = df["verlopen"].sum()
+
+total_discount = df["discount"].sum()
+total_omzet = df["omzet"].sum()
 
 conversion_rate = (
-    (total_ingeleverd / total_coupons) * 100
-    if total_coupons > 0
+    total_ingeleverd / total_verzonden * 100
+    if total_verzonden > 0
     else 0
 )
 
 expiry_rate = (
-    (total_verlopen / total_coupons) * 100
-    if total_coupons > 0
+    total_verlopen / total_verzonden * 100
+    if total_verzonden > 0
+    else 0
+)
+
+open_rate = (
+    total_openstaand / total_verzonden * 100
+    if total_verzonden > 0
     else 0
 )
 
@@ -367,39 +376,28 @@ st.caption(
 # KPI CARDS
 # ==========================================================
 
-c1, c2, c3, c4, c5 = st.columns(5)
+c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 
 with c1:
-    kpi_card(
-        "Openstaand",
-        f"{total_openstaand:,.0f}",
-    )
+    kpi_card("Verzonden", f"{total_verzonden:,.0f}")
 
 with c2:
-    kpi_card(
-        "Gebruikt",
-        f"{total_ingeleverd:,.0f}",
-    )
+    kpi_card("Openstaand", f"{total_openstaand:,.0f}")
 
 with c3:
-    kpi_card(
-        "Verlopen",
-        f"{total_verlopen:,.0f}",
-    )
+    kpi_card("Ingeleverd", f"{total_ingeleverd:,.0f}")
 
 with c4:
-    kpi_card(
-        "Conversie",
-        f"{conversion_rate:.1f}%",
-    )
+    kpi_card("Verlopen", f"{total_verlopen:,.0f}")
 
 with c5:
-    kpi_card(
-        "Verloop",
-        f"{expiry_rate:.1f}%",
-    )
+    kpi_card("Conversie", f"{conversion_rate:.1f}%")
 
-st.markdown("<br>", unsafe_allow_html=True)
+with c6:
+    kpi_card("Korting", f"€ {total_discount:,.0f}")
+
+with c7:
+    kpi_card("Omzet", f"€ {total_omzet:,.0f}")
 
 # ==========================================================
 # STATUS VERDELING
@@ -439,7 +437,7 @@ with left:
         },
     )
 
-    fig.update_layout(
+    fig.updatum_layout(
         height=420,
         showlegend=False,
         plot_bgcolor="white",
@@ -466,13 +464,13 @@ with right:
     st.subheader("Coupongebruik over tijd")
 
     if (
-        "date" in df.columns
-        and df["date"].notna().any()
+        "datum" in df.columns
+        and df["datum"].notna().any()
     ):
 
         trend = (
             df.groupby(
-                "date",
+                "datum",
                 as_index=False,
             )
             .agg(
@@ -481,21 +479,21 @@ with right:
                     "sum",
                 )
             )
-            .sort_values("date")
+            .sort_values("datum")
         )
 
         fig = px.line(
             trend,
-            x="date",
+            x="datum",
             y="gebruikt",
         )
 
-        fig.update_traces(
+        fig.updatum_traces(
             line_color=BRAND_GREEN,
             line_width=3,
         )
 
-        fig.update_layout(
+        fig.updatum_layout(
             height=420,
             plot_bgcolor="white",
             paper_bgcolor=BACKGROUND,
@@ -519,32 +517,36 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ==========================================================
 
 summary = (
-    df.sort_values("date")
+    df.sort_values("datum")
       .groupby("coupon_code", as_index=False)
       .last()
 )
 
-summary["totaal"] = (
-    summary["openstaand"]
-    + summary["ingeleverd"]
-    + summary["verlopen"]
-)
+summary["totaal"] = summary["verzonden"]
 
 summary["conversie"] = (
     summary["ingeleverd"]
-    .div(
-        summary["totaal"]
-        .replace(0, pd.NA)
-    )
+    / summary["verzonden"]
     * 100
 ).fillna(0)
 
 summary["verloop_percentage"] = (
     summary["verlopen"]
+    / summary["verzonden"]
+    * 100
+).fillna(0)
+
+summary["roi"] = (
+    summary["omzet"]
     .div(
-        summary["totaal"]
+        summary["discount"]
         .replace(0, pd.NA)
     )
+).fillna(0)
+
+summary["openstaand_percentage"] = (
+    summary["openstaand"]
+    / summary["verzonden"]
     * 100
 ).fillna(0)
 
@@ -563,30 +565,24 @@ with left:
 
     st.subheader("Gebruik vs verloop")
 
-    chart_data = (
-        summary_filtered
-        .sort_values(
-            "ingeleverd",
-            ascending=False,
-        )
-        .head(10)
-    )
+chart_data = (
+    summary_filtered
+    .sort_values("omzet", ascending=False)
+    .head(10)
+)
 
-    fig = px.bar(
-        chart_data,
-        x="coupon_code",
-        y=[
-            "ingeleverd",
-            "verlopen",
-        ],
-        barmode="stack",
-        color_discrete_sequence=[
-            "#084422",
-            "#c9654b",
-        ],
-    )
+fig = px.bar(
+    chart_data,
+    x="coupon_code",
+    y="omzet",
+    color="omzet",
+    color_continuous_scale=[
+        "#dce7e1",
+        "#084422"
+    ]
+)
 
-    fig.update_layout(
+    fig.updatum_layout(
         height=450,
         plot_bgcolor="white",
         paper_bgcolor=BACKGROUND,
@@ -630,7 +626,7 @@ with right:
         ],
     )
 
-    fig.update_layout(
+    fig.updatum_layout(
         height=450,
         plot_bgcolor="white",
         paper_bgcolor=BACKGROUND,
@@ -683,7 +679,7 @@ if not summary_filtered.empty:
     with col2:
 
         insight_card(
-            "🔥 Meest gebruikt",
+            "🔥 Hoogste omzet",
             (
                 f"{most_used['coupon_code']}<br>"
                 f"<span style='font-size:16px'>"
@@ -695,7 +691,7 @@ if not summary_filtered.empty:
     with col3:
 
         insight_card(
-            "⚠ Hoogste verloop",
+            "⚠ Beste ROI",
             (
                 f"{highest_expiry['coupon_code']}<br>"
                 f"<span style='font-size:16px'>"
@@ -716,15 +712,19 @@ display_df = (
     summary_filtered[
         [
             "coupon_code",
+            "campagne",
+            "verzonden",
+            "openstaand",
             "ingeleverd",
             "verlopen",
-            "openstaand",
+            "discount",
+            "omzet",
             "conversie",
-            "verloop_percentage",
+            "roi",
         ]
     ]
     .sort_values(
-        "ingeleverd",
+        "omzet",
         ascending=False,
     )
 )
@@ -732,14 +732,37 @@ display_df = (
 display_df = display_df.rename(
     columns={
         "coupon_code": "Coupon",
-        "ingeleverd": "Gebruikt",
-        "verlopen": "Verlopen",
+        "campagne": "Campagne",
+        "verzonden": "Verzonden",
         "openstaand": "Openstaand",
+        "ingeleverd": "Ingeleverd",
+        "verlopen": "Verlopen",
+        "discount": "Korting (€)",
+        "omzet": "Omzet (€)",
         "conversie": "Conversie %",
-        "verloop_percentage": "Verloop %",
+        "roi": "ROI"
     }
 )
 
+display_df["Conversie %"] = (
+    display_df["Conversie %"]
+    .round(1)
+)
+
+display_df["ROI"] = (
+    display_df["ROI"]
+    .round(2)
+)
+
+display_df["Korting (€)"] = (
+    display_df["Korting (€)"]
+    .map(lambda x: f"€ {x:,.0f}")
+)
+
+display_df["Omzet (€)"] = (
+    display_df["Omzet (€)"]
+    .map(lambda x: f"€ {x:,.0f}")
+)
 st.dataframe(
     display_df,
     use_container_width=True,
@@ -754,7 +777,7 @@ with st.expander("Bekijk ruwe data"):
 
     st.dataframe(
         df.sort_values(
-            "date",
+            "datum",
             ascending=False,
         ),
         use_container_width=True,
