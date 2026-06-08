@@ -163,6 +163,7 @@ def load_data() -> pd.DataFrame:
     response.raise_for_status()
 
     data = response.json()
+
     if not data:
         return pd.DataFrame()
 
@@ -218,7 +219,7 @@ def summarize_coupons(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ==========================================================
-# DATA
+# DATA LADEN
 # ==========================================================
 
 try:
@@ -269,7 +270,7 @@ if df.empty:
     st.stop()
 
 # ==========================================================
-# SUMMARY
+# SAMENVATTING
 # ==========================================================
 
 summary = summarize_coupons(df)
@@ -351,7 +352,11 @@ with left:
     )
 
     fig.update_layout(showlegend=False)
-    st.plotly_chart(apply_chart_layout(fig), use_container_width=True)
+
+    st.plotly_chart(
+        apply_chart_layout(fig),
+        use_container_width=True,
+    )
 
 with right:
     st.subheader("Coupongebruik over tijd")
@@ -363,8 +368,16 @@ with right:
             .sort_values("datum")
         )
 
-        fig = px.line(trend, x="datum", y="gebruikt")
-        fig.update_traces(line_color=BRAND_GREEN, line_width=3)
+        fig = px.line(
+            trend,
+            x="datum",
+            y="gebruikt",
+        )
+
+        fig.update_traces(
+            line_color=BRAND_GREEN,
+            line_width=3,
+        )
 
         st.plotly_chart(
             apply_chart_layout(fig, x_title="", y_title="Gebruikt"),
@@ -373,14 +386,19 @@ with right:
     else:
         st.info("Geen geldige datums beschikbaar.")
 
+st.markdown("")
+
 # ==========================================================
-# CHARTS
+# OMZET + VERLOOP / COUPONDETAIL
 # ==========================================================
 
 left, right = st.columns(2)
 
 with left:
-    st.subheader("Top omzet per coupon")
+    if selected_coupon == "Alle coupons":
+        st.subheader("Top omzet per coupon")
+    else:
+        st.subheader("Omzet geselecteerde coupon")
 
     chart_data = summary_filtered.sort_values("omzet", ascending=False).head(10)
 
@@ -401,33 +419,82 @@ with left:
         )
 
 with right:
-    st.subheader("Coupons met hoogste verloop")
+    if selected_coupon == "Alle coupons":
+        st.subheader("Coupons met hoogste verloop")
 
-    worst_coupons = (
-        summary_filtered
-        .sort_values("verloop_percentage", ascending=False)
-        .head(10)
-    )
+        worst_coupons = (
+            summary_filtered
+            .sort_values("verloop_percentage", ascending=False)
+            .head(10)
+        )
 
-    if worst_coupons.empty:
-        st.info("Geen coupons met minimaal 10 verzonden coupons.")
+        if worst_coupons.empty:
+            st.info("Geen coupons met minimaal 10 verzonden coupons.")
+        else:
+            fig = px.bar(
+                worst_coupons,
+                y="coupon_code",
+                x="verloop_percentage",
+                orientation="h",
+                color="verloop_percentage",
+                color_continuous_scale=["#f5d6d0", "#e8a697", "#c9654b"],
+            )
+
+            st.plotly_chart(
+                apply_chart_layout(
+                    fig,
+                    height=450,
+                    x_title="Verloop %",
+                    y_title="",
+                ),
+                use_container_width=True,
+            )
+
     else:
-        fig = px.bar(
-            worst_coupons,
-            y="coupon_code",
-            x="verloop_percentage",
-            orientation="h",
-            color="verloop_percentage",
-            color_continuous_scale=["#f5d6d0", "#e8a697", "#c9654b"],
+        st.subheader("Detail geselecteerde coupon")
+
+        selected_summary = summary.iloc[0]
+
+        detail_df = pd.DataFrame(
+            {
+                "Status": ["Ingeleverd", "Verlopen", "Openstaand"],
+                "Aantal": [
+                    selected_summary["ingeleverd"],
+                    selected_summary["verlopen"],
+                    selected_summary["openstaand"],
+                ],
+            }
         )
 
-        st.plotly_chart(
-            apply_chart_layout(fig, height=450, x_title="Verloop %", y_title=""),
-            use_container_width=True,
-        )
+        if detail_df["Aantal"].sum() == 0:
+            st.info("Geen statusdata beschikbaar voor deze coupon.")
+        else:
+            fig = px.pie(
+                detail_df,
+                names="Status",
+                values="Aantal",
+                hole=0.55,
+                color="Status",
+                color_discrete_map={
+                    "Ingeleverd": BRAND_GREEN,
+                    "Verlopen": "#c9654b",
+                    "Openstaand": "#cfd7d1",
+                },
+            )
+
+            fig.update_layout(
+                height=450,
+                paper_bgcolor=BACKGROUND,
+                margin=dict(l=20, r=20, t=20, b=20),
+                showlegend=True,
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+
+st.markdown("")
 
 # ==========================================================
-# INSIGHTS
+# INZICHTEN
 # ==========================================================
 
 st.subheader("Belangrijkste inzichten")
@@ -458,6 +525,8 @@ else:
             "💡 Beste ROI",
             f"{best_roi['coupon_code']}\n{best_roi['roi']:.2f}",
         )
+
+st.markdown("")
 
 # ==========================================================
 # TABEL
@@ -502,7 +571,11 @@ display_df["ROI"] = display_df["ROI"].round(2)
 display_df["Korting (€)"] = display_df["Korting (€)"].map(format_currency)
 display_df["Omzet (€)"] = display_df["Omzet (€)"].map(format_currency)
 
-st.dataframe(display_df, use_container_width=True, hide_index=True)
+st.dataframe(
+    display_df,
+    use_container_width=True,
+    hide_index=True,
+)
 
 # ==========================================================
 # RUWE DATA
