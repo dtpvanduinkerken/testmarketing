@@ -506,7 +506,6 @@ def render_kpis(weekly: pd.DataFrame, deals: pd.DataFrame, member_status: pd.Dat
         format_number(current_week),
         delta=f"{growth_percentage:.1f}%",
     )
-    col3.metric("Totaal cumulatief", format_number(total_cumulative))
     col4.metric("Omzet member deals", format_currency(total_revenue))
     col5.metric("Actieve members", format_number(active_members))
     col6.metric("Slapende members", format_number(sleeping_members))
