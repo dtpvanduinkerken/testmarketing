@@ -445,7 +445,7 @@ def get_selected_period(dataframes: list[pd.DataFrame]) -> tuple:
             "Alles",
             "Aangepast",
         ],
-        index=1,
+        index=3,
     )
 
     if period_label == "Afgelopen 7 dagen":
