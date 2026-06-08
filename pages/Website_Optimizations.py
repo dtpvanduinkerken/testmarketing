@@ -385,19 +385,7 @@ def clean_funnel(df: pd.DataFrame) -> pd.DataFrame:
         }
     )
 
-    possible_numeric_columns = [
-        "count",
-        "view_item",
-        "add_to_cart",
-        "begin_checkout",
-        "purchase",
-    ]
-
-    available_numeric_columns = [
-        column for column in possible_numeric_columns if column in df.columns
-    ]
-
-    df = ensure_numeric(df, available_numeric_columns)
+    df = ensure_numeric(df, ["count"])
     df = parse_date_column(df)
 
     if "step" in df.columns:
@@ -539,51 +527,25 @@ def render_sidebar(data: dict[str, pd.DataFrame]) -> dict:
 
 
 def create_funnel_data(funnel: pd.DataFrame) -> pd.DataFrame:
-    if funnel.empty:
+    if funnel.empty or not {"step", "count"}.issubset(funnel.columns):
         return pd.DataFrame()
 
-    order = [
-        "Product bekeken",
-        "Toegevoegd aan winkelwagen",
-        "Checkout gestart",
-        "Aankopen",
-        "Aankoop",
-    ]
+    step_order = {
+        "Product bekeken": 1,
+        "Toegevoegd aan winkelwagen": 2,
+        "Checkout gestart": 3,
+        "Aankopen": 4,
+        "Aankoop": 4,
+    }
 
-    if {"step", "count"}.issubset(funnel.columns):
-        funnel_data = (
-            funnel.groupby("step", as_index=False)["count"]
-            .sum()
-            .rename(columns={"step": "Stap", "count": "Aantal"})
-        )
+    funnel_data = (
+        funnel.groupby("step", as_index=False)["count"]
+        .sum()
+        .rename(columns={"step": "Stap", "count": "Aantal"})
+    )
 
-        funnel_data["sort_order"] = funnel_data["Stap"].apply(
-            lambda value: order.index(value) if value in order else 999
-        )
-
-        funnel_data = funnel_data.sort_values("sort_order").drop(columns="sort_order")
-
-    else:
-        funnel_columns = ["view_item", "add_to_cart", "begin_checkout", "purchase"]
-        available_columns = [column for column in funnel_columns if column in funnel.columns]
-
-        if not available_columns:
-            return pd.DataFrame()
-
-        labels = {
-            "view_item": "Product bekeken",
-            "add_to_cart": "Toegevoegd aan winkelwagen",
-            "begin_checkout": "Checkout gestart",
-            "purchase": "Aankopen",
-        }
-
-        funnel_data = pd.DataFrame(
-            {
-                "Stap": [labels[column] for column in available_columns],
-                "Aantal": [funnel[column].sum() for column in available_columns],
-            }
-        )
-
+    funnel_data["sort_order"] = funnel_data["Stap"].map(step_order).fillna(999)
+    funnel_data = funnel_data.sort_values("sort_order").drop(columns="sort_order")
     funnel_data = funnel_data[funnel_data["Aantal"] > 0].copy()
 
     if funnel_data.empty:
@@ -598,6 +560,37 @@ def create_funnel_data(funnel: pd.DataFrame) -> pd.DataFrame:
     )
 
     return funnel_data
+
+
+def create_funnel_trend_data(funnel: pd.DataFrame) -> pd.DataFrame:
+    if funnel.empty or not {"date", "step", "count"}.issubset(funnel.columns):
+        return pd.DataFrame()
+
+    trend_data = (
+        funnel.groupby(["date", "step"], as_index=False)["count"]
+        .sum()
+        .rename(
+            columns={
+                "date": "Datum",
+                "step": "Stap",
+                "count": "Aantal",
+            }
+        )
+    )
+
+    step_order = {
+        "Product bekeken": 1,
+        "Toegevoegd aan winkelwagen": 2,
+        "Checkout gestart": 3,
+        "Aankopen": 4,
+        "Aankoop": 4,
+    }
+
+    trend_data["sort_order"] = trend_data["Stap"].map(step_order).fillna(999)
+    trend_data = trend_data.sort_values(["Datum", "sort_order"])
+    trend_data = trend_data.drop(columns="sort_order")
+
+    return trend_data
 
 
 def calculate_metrics(
@@ -759,8 +752,27 @@ def render_funnel_chart(funnel: pd.DataFrame, height: int = 540) -> None:
         funnel_data,
         x="Aantal",
         y="Stap",
-        title="Checkout funnel",
+        title="Checkout funnel totaal binnen geselecteerde periode",
         color_discrete_sequence=[BRAND_GREEN],
+    )
+
+    st.plotly_chart(apply_plotly_layout(fig, height=height), use_container_width=True)
+
+
+def render_funnel_trend_chart(funnel: pd.DataFrame, height: int = 430) -> None:
+    trend_data = create_funnel_trend_data(funnel)
+
+    if trend_data.empty:
+        st.info("Geen funneltrend per datum beschikbaar.")
+        return
+
+    fig = px.line(
+        trend_data,
+        x="Datum",
+        y="Aantal",
+        color="Stap",
+        markers=True,
+        title="Checkout funnel ontwikkeling per dag",
     )
 
     st.plotly_chart(apply_plotly_layout(fig, height=height), use_container_width=True)
@@ -811,10 +823,7 @@ def render_pages_tab(landing: pd.DataFrame, settings: dict) -> None:
 
     render_page_sessions_chart(landing, settings)
 
-    if landing.empty:
-        return
-
-    if "sessions" not in landing.columns:
+    if landing.empty or "sessions" not in landing.columns:
         return
 
     page_data = landing[landing["sessions"] >= settings["minimum_sessions"]].copy()
@@ -997,7 +1006,24 @@ def render_funnel_tab(funnel: pd.DataFrame) -> None:
         st.warning("Geen bruikbare funneldata gevonden.")
         return
 
+    cols = st.columns(len(funnel_data))
+
+    for col, (_, row) in zip(cols, funnel_data.iterrows()):
+        col.metric(
+            row["Stap"],
+            format_number(row["Aantal"]),
+            format_percent(row["Conversie vanaf vorige stap"]),
+        )
+
+    add_space()
+
     render_funnel_chart(funnel)
+
+    add_space()
+
+    render_funnel_trend_chart(funnel)
+
+    add_space()
 
     display_df = funnel_data.copy()
     display_df["Aantal"] = display_df["Aantal"].map(format_number)
