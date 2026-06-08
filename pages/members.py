@@ -28,6 +28,13 @@ DEALS_URL = (
     "/gviz/tq?tqx=out:csv&sheet=MemberDeal"
 )
 
+MEMBER_STATUS_URL = (
+    f"https://docs.google.com/spreadsheets/d/{SHEET_ID}"
+    "/gviz/tq?tqx=out:csv&sheet=members"
+)
+
+SLEEPING_DAYS = 365
+
 BRAND_GREEN = "#084422"
 BACKGROUND = "#f7f3ec"
 TEXT_MUTED = "#6f766f"
@@ -178,7 +185,6 @@ def fetch_sheet(url: str) -> pd.DataFrame:
     )
 
     response.raise_for_status()
-
     return normalize_columns(pd.read_csv(io.StringIO(response.text)))
 
 
@@ -190,6 +196,11 @@ def load_members() -> pd.DataFrame:
 @st.cache_data(ttl=3600, show_spinner="Deals data laden...")
 def load_deals() -> pd.DataFrame:
     return fetch_sheet(DEALS_URL)
+
+
+@st.cache_data(ttl=3600, show_spinner="Actieve en slapende members laden...")
+def load_member_status() -> pd.DataFrame:
+    return fetch_sheet(MEMBER_STATUS_URL)
 
 
 def format_number(value: float | int) -> str:
@@ -309,6 +320,49 @@ def clean_deals(deals: pd.DataFrame) -> pd.DataFrame:
     return deals
 
 
+def clean_member_status(member_status: pd.DataFrame) -> pd.DataFrame:
+    if member_status.empty:
+        return member_status
+
+    required_columns = {"member_id", "eerste_aankoop", "laatste_aankoop"}
+
+    if not required_columns.issubset(member_status.columns):
+        st.error(
+            "De kolommen `member_ID`, `eerste_aankoop` en `laatste_aankoop` ontbreken "
+            "in het tabblad `members`."
+        )
+        return pd.DataFrame()
+
+    member_status = member_status.copy()
+
+    member_status["member_id"] = member_status["member_id"].astype(str).str.strip()
+    member_status = member_status[member_status["member_id"] != ""]
+
+    member_status["eerste_aankoop"] = pd.to_datetime(
+        member_status["eerste_aankoop"],
+        errors="coerce",
+        dayfirst=True,
+    )
+
+    member_status["laatste_aankoop"] = pd.to_datetime(
+        member_status["laatste_aankoop"],
+        errors="coerce",
+        dayfirst=True,
+    )
+
+    today = pd.Timestamp.today().normalize()
+
+    member_status["dagen_sinds_laatste_aankoop"] = (
+        today - member_status["laatste_aankoop"]
+    ).dt.days
+
+    member_status["member_status"] = member_status["dagen_sinds_laatste_aankoop"].apply(
+        lambda days: "Slapend" if pd.notna(days) and days > SLEEPING_DAYS else "Actief"
+    )
+
+    return member_status
+
+
 def prepare_weekly_members(members: pd.DataFrame) -> pd.DataFrame:
     weekly = (
         members.groupby(["year", "week", "week_label", "sort_key"])
@@ -328,7 +382,7 @@ def prepare_weekly_members(members: pd.DataFrame) -> pd.DataFrame:
 # SIDEBAR
 # ==========================================================
 
-def apply_filters(members: pd.DataFrame, deals: pd.DataFrame):
+def apply_filters(members: pd.DataFrame, deals: pd.DataFrame, member_status: pd.DataFrame):
     st.sidebar.title("👥 Members")
     st.sidebar.caption("Filter dashboarddata")
 
@@ -375,7 +429,21 @@ def apply_filters(members: pd.DataFrame, deals: pd.DataFrame):
                 )
             ]
 
-    return members, deals
+    if not member_status.empty and "member_status" in member_status.columns:
+        status_options = sorted(member_status["member_status"].dropna().unique().tolist())
+
+        selected_status = st.sidebar.multiselect(
+            "Member status",
+            status_options,
+            default=status_options,
+        )
+
+        if selected_status:
+            member_status = member_status[
+                member_status["member_status"].isin(selected_status)
+            ]
+
+    return members, deals, member_status
 
 
 # ==========================================================
@@ -400,7 +468,7 @@ def render_header() -> None:
     st.markdown('<div class="vdk-divider"></div>', unsafe_allow_html=True)
 
 
-def render_kpis(weekly: pd.DataFrame, deals: pd.DataFrame) -> None:
+def render_kpis(weekly: pd.DataFrame, deals: pd.DataFrame, member_status: pd.DataFrame) -> None:
     total_members = int(weekly["Nieuwe members"].sum())
     total_cumulative = int(weekly["Totaal"].iloc[-1])
     current_week = int(weekly.iloc[-1]["Nieuwe members"])
@@ -417,7 +485,14 @@ def render_kpis(weekly: pd.DataFrame, deals: pd.DataFrame) -> None:
 
     total_revenue = deals["omzet"].sum() if not deals.empty and "omzet" in deals.columns else 0
 
-    col1, col2, col3, col4 = st.columns(4)
+    active_members = 0
+    sleeping_members = 0
+
+    if not member_status.empty and "member_status" in member_status.columns:
+        active_members = int((member_status["member_status"] == "Actief").sum())
+        sleeping_members = int((member_status["member_status"] == "Slapend").sum())
+
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
 
     col1.metric("Nieuwe members totaal", format_number(total_members))
     col2.metric(
@@ -427,6 +502,8 @@ def render_kpis(weekly: pd.DataFrame, deals: pd.DataFrame) -> None:
     )
     col3.metric("Totaal cumulatief", format_number(total_cumulative))
     col4.metric("Omzet member deals", format_currency(total_revenue))
+    col5.metric("Actieve members", format_number(active_members))
+    col6.metric("Slapende members", format_number(sleeping_members))
 
 
 def render_member_charts(weekly: pd.DataFrame) -> None:
@@ -483,6 +560,72 @@ def render_member_charts(weekly: pd.DataFrame) -> None:
         )
 
         st.plotly_chart(apply_chart_style(fig), use_container_width=True)
+
+
+def render_member_status(member_status: pd.DataFrame) -> None:
+    if member_status.empty:
+        st.info("Geen data beschikbaar voor actieve en slapende members.")
+        return
+
+    if "member_status" not in member_status.columns:
+        st.info("Geen member status beschikbaar.")
+        return
+
+    st.subheader("Actieve vs slapende members")
+
+    status_summary = (
+        member_status.groupby("member_status")
+        .size()
+        .reset_index(name="Aantal members")
+        .sort_values("Aantal members", ascending=False)
+    )
+
+    fig = px.bar(
+        status_summary,
+        x="member_status",
+        y="Aantal members",
+        text_auto=True,
+        color="member_status",
+        color_discrete_map={
+            "Actief": "#7d9b88",
+            "Slapend": "#c76f6f",
+        },
+    )
+
+    fig.update_layout(
+        xaxis_title="Status",
+        yaxis_title="Aantal members",
+        showlegend=False,
+    )
+
+    st.plotly_chart(apply_chart_style(fig), use_container_width=True)
+
+    with st.expander("Bekijk actieve en slapende members"):
+        display_df = member_status.copy()
+
+        display_df["eerste_aankoop"] = display_df["eerste_aankoop"].dt.strftime("%d-%m-%Y")
+        display_df["laatste_aankoop"] = display_df["laatste_aankoop"].dt.strftime("%d-%m-%Y")
+
+        display_df = display_df.rename(
+            columns={
+                "member_id": "member_ID",
+                "member_status": "status",
+            }
+        )
+
+        st.dataframe(
+            display_df[
+                [
+                    "member_ID",
+                    "eerste_aankoop",
+                    "laatste_aankoop",
+                    "dagen_sinds_laatste_aankoop",
+                    "status",
+                ]
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 def render_deal_revenue(deals: pd.DataFrame) -> None:
@@ -655,11 +798,12 @@ def main() -> None:
     try:
         members = clean_members(load_members())
         deals = clean_deals(load_deals())
+        member_status = clean_member_status(load_member_status())
     except Exception as error:
         st.error(f"Data kon niet geladen worden: {error}")
         return
 
-    members, deals = apply_filters(members, deals)
+    members, deals, member_status = apply_filters(members, deals, member_status)
 
     if members.empty:
         st.error("Geen geldige members data beschikbaar voor de gekozen filters.")
@@ -672,10 +816,13 @@ def main() -> None:
         return
 
     render_header()
-    render_kpis(weekly, deals)
+    render_kpis(weekly, deals, member_status)
 
     add_space()
     render_member_charts(weekly)
+
+    add_space()
+    render_member_status(member_status)
 
     add_space()
 
@@ -699,6 +846,11 @@ def main() -> None:
         + (
             f" · {format_number(len(deals))} deals records geladen"
             if not deals.empty
+            else ""
+        )
+        + (
+            f" · {format_number(len(member_status))} member status records geladen"
+            if not member_status.empty
             else ""
         )
     )
