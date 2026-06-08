@@ -1,6 +1,5 @@
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import requests
 import streamlit as st
 
@@ -9,10 +8,9 @@ import streamlit as st
 # ==========================================================
 
 st.set_page_config(
-    page_title="VDK Coupon Dashboard",
+    page_title="Coupon Dashboard",
     page_icon="🎟️",
     layout="wide",
-    initial_sidebar_state="expanded",
 )
 
 # ==========================================================
@@ -21,79 +19,24 @@ st.set_page_config(
 
 BRAND_GREEN = "#084422"
 BACKGROUND = "#f7f3ec"
-TEXT_MUTED = "#6f766f"
-CARD_BORDER = "rgba(8, 68, 34, 0.08)"
 
 # ==========================================================
 # STYLING
 # ==========================================================
 
 st.markdown(
-    f"""
-<style>
+    """
+    <style>
 
-html,
-body,
-[data-testid="stAppViewContainer"] {{
-    background:{BACKGROUND};
-}}
+    .stMetric {
+        background-color: white;
+        border-radius: 12px;
+        padding: 15px;
+        border: 1px solid #e8e8e8;
+    }
 
-.block-container {{
-    padding-top:2rem;
-    max-width:1500px;
-}}
-
-section[data-testid="stSidebar"] {{
-    background:white;
-}}
-
-.chart-card {{
-    background:white;
-    border-radius:16px;
-    padding:16px;
-    border:1px solid {CARD_BORDER};
-}}
-
-.kpi-card {{
-    background:white;
-    border-radius:16px;
-    padding:20px;
-    border:1px solid {CARD_BORDER};
-    min-height:110px;
-}}
-
-.kpi-label {{
-    color:{TEXT_MUTED};
-    font-size:13px;
-    margin-bottom:10px;
-}}
-
-.kpi-value {{
-    color:{BRAND_GREEN};
-    font-size:32px;
-    font-weight:700;
-}}
-
-.insight-card {{
-    background:white;
-    border-radius:16px;
-    padding:20px;
-    border:1px solid {CARD_BORDER};
-}}
-
-.insight-title {{
-    color:{TEXT_MUTED};
-    font-size:12px;
-}}
-
-.insight-value {{
-    color:{BRAND_GREEN};
-    font-size:24px;
-    font-weight:600;
-}}
-
-</style>
-""",
+    </style>
+    """,
     unsafe_allow_html=True,
 )
 
@@ -111,14 +54,13 @@ COUPON_URL = (
 # HELPERS
 # ==========================================================
 
-
 def normalize_columns(df):
 
     df.columns = (
-        df.columns.str.strip()
+        df.columns
+        .str.strip()
         .str.lower()
         .str.replace(" ", "_", regex=False)
-        .str.replace("-", "_", regex=False)
     )
 
     return df
@@ -135,56 +77,12 @@ def parse_numeric(series):
     ).fillna(0)
 
 
-def kpi_card(title, value):
-
-    st.markdown(
-        f"""
-        <div class="kpi-card">
-
-            <div class="kpi-label">
-                {title}
-            </div>
-
-            <div class="kpi-value">
-                {value}
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def insight_card(title, value):
-
-    st.markdown(
-        f"""
-        <div class="insight-card">
-
-            <div class="insight-title">
-                {title}
-            </div>
-
-            <div class="insight-value">
-                {value}
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-# ==========================================================
-# DATA LADEN
-# ==========================================================
-
 @st.cache_data(ttl=300)
 def load_data():
 
     response = requests.get(
         COUPON_URL,
-        timeout=20,
+        timeout=30,
     )
 
     response.raise_for_status()
@@ -214,35 +112,22 @@ def clean_data(df):
 
         if col in df.columns:
             df[col] = parse_numeric(df[col])
-
         else:
             df[col] = 0
-
-    if "coupon_code" in df.columns:
-
-        df["coupon_code"] = (
-            df["coupon_code"]
-            .fillna("")
-            .astype(str)
-            .str.strip()
-        )
-
-        df = df[
-            df["coupon_code"] != ""
-        ]
 
     if "datum" in df.columns:
 
         df["datum"] = pd.to_datetime(
             df["datum"],
             errors="coerce",
+            dayfirst=True,
         )
 
     return df
 
 
 # ==========================================================
-# DATA
+# DATA LADEN
 # ==========================================================
 
 try:
@@ -260,24 +145,44 @@ except Exception as error:
 
 if df.empty:
 
-    st.warning("Geen data gevonden.")
+    st.warning(
+        "Geen data gevonden."
+    )
 
     st.stop()
 
 # ==========================================================
-# SIDEBAR
+# FILTERS
 # ==========================================================
 
 st.sidebar.title("🎟️ Coupons")
 
-st.sidebar.caption(
-    "Filter op coupon en periode"
+campagnes = (
+    ["Alle campagnes"]
+    + sorted(
+        df["campagne"]
+        .dropna()
+        .unique()
+        .tolist()
+    )
 )
 
-coupon_options = (
+selected_campaign = st.sidebar.selectbox(
+    "Campagne",
+    campagnes,
+)
+
+if selected_campaign != "Alle campagnes":
+
+    df = df[
+        df["campagne"] == selected_campaign
+    ]
+
+coupon_codes = (
     ["Alle coupons"]
     + sorted(
         df["coupon_code"]
+        .dropna()
         .unique()
         .tolist()
     )
@@ -285,7 +190,7 @@ coupon_options = (
 
 selected_coupon = st.sidebar.selectbox(
     "Coupon",
-    coupon_options,
+    coupon_codes,
 )
 
 if selected_coupon != "Alle coupons":
@@ -294,45 +199,74 @@ if selected_coupon != "Alle coupons":
         df["coupon_code"] == selected_coupon
     ]
 
-if (
-    "datum" in df.columns
-    and df["datum"].notna().any()
-):
+if df["datum"].notna().any():
 
-    min_datum = df["datum"].min().date()
-    max_datum = df["datum"].max().date()
+    min_date = df["datum"].min().date()
+    max_date = df["datum"].max().date()
 
-    selected_datums = st.sidebar.date_input(
+    selected_dates = st.sidebar.date_input(
         "Periode",
-        value=(min_datum, max_datum),
+        value=(min_date, max_date),
     )
 
-    if len(selected_datums) == 2:
+    if len(selected_dates) == 2:
 
-        start_datum, end_datum = selected_datums
+        start_date, end_date = selected_dates
 
         df = df[
             df["datum"].between(
-                pd.Timestamp(start_datum),
-                pd.Timestamp(end_datum),
+                pd.Timestamp(start_date),
+                pd.Timestamp(end_date),
             )
         ]
+
+# ==========================================================
+# SAMENVATTING PER COUPON
+# ==========================================================
+
+summary = (
+    df.groupby(
+        ["coupon_code", "campagne"],
+        as_index=False,
+    )
+    .agg(
+        verzonden=("verzonden", "sum"),
+        openstaand=("openstaand", "sum"),
+        ingeleverd=("ingeleverd", "sum"),
+        verlopen=("verlopen", "sum"),
+        discount=("discount", "sum"),
+        omzet=("omzet", "sum"),
+    )
+)
+
+summary["conversie"] = (
+    summary["ingeleverd"]
+    .div(summary["verzonden"].replace(0, pd.NA))
+    .mul(100)
+).fillna(0)
+
+summary["verloop_percentage"] = (
+    summary["verlopen"]
+    .div(summary["verzonden"].replace(0, pd.NA))
+    .mul(100)
+).fillna(0)
+
+summary["roi"] = (
+    summary["omzet"]
+    .div(summary["discount"].replace(0, pd.NA))
+).fillna(0)
 
 # ==========================================================
 # KPI'S
 # ==========================================================
 
-total_openstaand = df["openstaand"].sum()
-total_ingeleverd = df["ingeleverd"].sum()
-total_verlopen = df["verlopen"].sum()
+total_verzonden = summary["verzonden"].sum()
+total_openstaand = summary["openstaand"].sum()
+total_ingeleverd = summary["ingeleverd"].sum()
+total_verlopen = summary["verlopen"].sum()
 
-total_verzonden = df["verzonden"].sum()
-total_openstaand = df["openstaand"].sum()
-total_ingeleverd = df["ingeleverd"].sum()
-total_verlopen = df["verlopen"].sum()
-
-total_discount = df["discount"].sum()
-total_omzet = df["omzet"].sum()
+total_discount = summary["discount"].sum()
+total_omzet = summary["omzet"].sum()
 
 conversion_rate = (
     total_ingeleverd / total_verzonden * 100
@@ -346,9 +280,9 @@ expiry_rate = (
     else 0
 )
 
-open_rate = (
-    total_openstaand / total_verzonden * 100
-    if total_verzonden > 0
+roi_total = (
+    total_omzet / total_discount
+    if total_discount > 0
     else 0
 )
 
@@ -356,54 +290,73 @@ open_rate = (
 # TITEL
 # ==========================================================
 
-st.markdown(
-    """
-    <h1 style="
-        color:#084422;
-        margin-bottom:0;
-    ">
-        Coupon Dashboard
-    </h1>
-    """,
-    unsafe_allow_html=True,
-)
+st.title("🎟️ Coupon Dashboard")
 
 st.caption(
-    "Inzicht in coupongebruik, conversie en verloop"
+    "Inzicht in couponprestaties, omzet en ROI"
 )
 
 # ==========================================================
 # KPI CARDS
 # ==========================================================
 
-c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
+c1, c2, c3, c4 = st.columns(4)
 
 with c1:
-    kpi_card("Verzonden", f"{total_verzonden:,.0f}")
+    st.metric(
+        "Verzonden",
+        f"{total_verzonden:,.0f}"
+    )
 
 with c2:
-    kpi_card("Openstaand", f"{total_openstaand:,.0f}")
+    st.metric(
+        "Ingeleverd",
+        f"{total_ingeleverd:,.0f}"
+    )
 
 with c3:
-    kpi_card("Ingeleverd", f"{total_ingeleverd:,.0f}")
+    st.metric(
+        "Conversie",
+        f"{conversion_rate:.1f}%"
+    )
 
 with c4:
-    kpi_card("Verlopen", f"{total_verlopen:,.0f}")
+    st.metric(
+        "Omzet",
+        f"€ {total_omzet:,.0f}"
+    )
+
+c5, c6, c7 = st.columns(3)
 
 with c5:
-    kpi_card("Conversie", f"{conversion_rate:.1f}%")
+    st.metric(
+        "Openstaand",
+        f"{total_openstaand:,.0f}"
+    )
 
 with c6:
-    kpi_card("Korting", f"€ {total_discount:,.0f}")
+    st.metric(
+        "Verlopen",
+        f"{total_verlopen:,.0f}"
+    )
 
 with c7:
-    kpi_card("Omzet", f"€ {total_omzet:,.0f}")
+    st.metric(
+        "ROI",
+        f"{roi_total:.2f}x"
+    )
+
+st.markdown("---")
 
 # ==========================================================
+# GRAFIEKEN RIJ 1
+# ==========================================================
+
+left, right = st.columns(2)
+
+# ----------------------------------------------------------
 # STATUS VERDELING
-# ==========================================================
-
-left, right = st.columns([1, 1])
+# ----------------------------------------------------------
 
 with left:
 
@@ -412,7 +365,7 @@ with left:
     status_df = pd.DataFrame(
         {
             "Status": [
-                "Gebruikt",
+                "Ingeleverd",
                 "Verlopen",
                 "Openstaand",
             ],
@@ -431,23 +384,16 @@ with left:
         orientation="h",
         color="Status",
         color_discrete_map={
-            "Gebruikt": "#084422",
+            "Ingeleverd": "#084422",
             "Verlopen": "#c9654b",
             "Openstaand": "#cfd7d1",
         },
     )
 
     fig.update_layout(
-        height=420,
+        height=450,
         showlegend=False,
         plot_bgcolor="white",
-        paper_bgcolor=BACKGROUND,
-        margin=dict(
-            l=20,
-            r=20,
-            t=20,
-            b=20,
-        ),
     )
 
     st.plotly_chart(
@@ -455,124 +401,25 @@ with left:
         use_container_width=True,
     )
 
-# ==========================================================
-# GEBRUIK OVER TIJD
-# ==========================================================
+# ----------------------------------------------------------
+# OMZET PER COUPON
+# ----------------------------------------------------------
 
 with right:
 
-    st.subheader("Coupongebruik over tijd")
-
-    if (
-        "datum" in df.columns
-        and df["datum"].notna().any()
-    ):
-
-        trend = (
-            df.groupby(
-                "datum",
-                as_index=False,
-            )
-            .agg(
-                gebruikt=(
-                    "ingeleverd",
-                    "sum",
-                )
-            )
-            .sort_values("datum")
-        )
-
-        fig = px.line(
-            trend,
-            x="datum",
-            y="gebruikt",
-        )
-
-        fig.update_traces(
-            line_color=BRAND_GREEN,
-            line_width=3,
-        )
-
-        fig.update_layout(
-            height=420,
-            plot_bgcolor="white",
-            paper_bgcolor=BACKGROUND,
-            margin=dict(
-                l=20,
-                r=20,
-                t=20,
-                b=20,
-            ),
-        )
-
-        st.plotly_chart(
-            fig,
-            use_container_width=True,
-        )
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-# ==========================================================
-# SAMENVATTING PER COUPON
-# ==========================================================
-
-summary = (
-    df.sort_values("datum")
-      .groupby("coupon_code", as_index=False)
-      .last()
-)
-
-summary["totaal"] = summary["verzonden"]
-
-summary["conversie"] = (
-    summary["ingeleverd"]
-    / summary["verzonden"]
-    * 100
-).fillna(0)
-
-summary["verloop_percentage"] = (
-    summary["verlopen"]
-    / summary["verzonden"]
-    * 100
-).fillna(0)
-
-summary["roi"] = (
-    summary["omzet"]
-    .div(
-        summary["discount"]
-        .replace(0, pd.NA)
-    )
-).fillna(0)
-
-summary["openstaand_percentage"] = (
-    summary["openstaand"]
-    / summary["verzonden"]
-    * 100
-).fillna(0)
-
-# Alleen coupons met voldoende volume
-summary_filtered = summary[
-    summary["totaal"] >= 10
-].copy()
-
-# ==========================================================
-# GEBRUIK VS VERLOOP
-# ==========================================================
-
-left, right = st.columns([1, 1])
-
-with left:
-
     st.subheader("Top omzet per coupon")
 
-    chart_data = (
-        summary_filtered
-        .sort_values("omzet", ascending=False)
+    omzet_chart = (
+        summary
+        .sort_values(
+            "omzet",
+            ascending=False,
+        )
         .head(10)
     )
 
     fig = px.bar(
-        chart_data,
+        omzet_chart,
         x="coupon_code",
         y="omzet",
         color="omzet",
@@ -584,8 +431,6 @@ with left:
 
     fig.update_layout(
         height=450,
-        plot_bgcolor="white",
-        paper_bgcolor=BACKGROUND,
         xaxis_title="",
         yaxis_title="Omzet (€)",
         coloraxis_showscale=False,
@@ -596,42 +441,182 @@ with left:
         use_container_width=True,
     )
 
+st.markdown("---")
+
 # ==========================================================
-# HOOGSTE VERLOOP
+# GRAFIEKEN RIJ 2
 # ==========================================================
+
+left, right = st.columns(2)
+
+# ----------------------------------------------------------
+# INGELEVERD OVER TIJD
+# ----------------------------------------------------------
+
+with left:
+
+    st.subheader("Ingeleverd over tijd")
+
+    trend_df = (
+        df.groupby(
+            "datum",
+            as_index=False,
+        )
+        .agg(
+            ingeleverd=("ingeleverd", "sum")
+        )
+        .sort_values("datum")
+    )
+
+    fig = px.line(
+        trend_df,
+        x="datum",
+        y="ingeleverd",
+    )
+
+    fig.update_traces(
+        line_color="#084422",
+        line_width=3,
+    )
+
+    fig.update_layout(
+        height=450,
+        xaxis_title="",
+        yaxis_title="Aantal",
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+    )
+
+# ----------------------------------------------------------
+# OMZET OVER TIJD
+# ----------------------------------------------------------
 
 with right:
 
-    st.subheader("Coupons met hoogste verloop")
+    st.subheader("Omzet over tijd")
 
-    worst_coupons = (
-        summary_filtered
+    omzet_trend = (
+        df.groupby(
+            "datum",
+            as_index=False,
+        )
+        .agg(
+            omzet=("omzet", "sum")
+        )
+        .sort_values("datum")
+    )
+
+    fig = px.line(
+        omzet_trend,
+        x="datum",
+        y="omzet",
+    )
+
+    fig.update_traces(
+        line_color="#0d6b36",
+        line_width=3,
+    )
+
+    fig.update_layout(
+        height=450,
+        xaxis_title="",
+        yaxis_title="Omzet (€)",
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+    )
+
+st.markdown("---")
+
+# ==========================================================
+# INSIGHTS
+# ==========================================================
+
+st.subheader("📈 Belangrijkste inzichten")
+
+if not summary.empty:
+
+    best_conversion = summary.loc[
+        summary["conversie"].idxmax()
+    ]
+
+    best_roi = summary.loc[
+        summary["roi"].idxmax()
+    ]
+
+    highest_revenue = summary.loc[
+        summary["omzet"].idxmax()
+    ]
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+
+        st.metric(
+            "🏆 Hoogste conversie",
+            best_conversion["coupon_code"],
+            f"{best_conversion['conversie']:.1f}%"
+        )
+
+    with col2:
+
+        st.metric(
+            "🔥 Hoogste omzet",
+            best_revenue["coupon_code"]
+            if "best_revenue" in locals()
+            else highest_revenue["coupon_code"],
+            f"€ {highest_revenue['omzet']:,.0f}"
+        )
+
+    with col3:
+
+        st.metric(
+            "🚀 Beste ROI",
+            best_roi["coupon_code"],
+            f"{best_roi['roi']:.2f}x"
+        )
+
+st.markdown("---")
+
+# ==========================================================
+# TOP CONVERSIE VS VERLOOP
+# ==========================================================
+
+left, right = st.columns(2)
+
+with left:
+
+    st.subheader("Top conversie coupons")
+
+    conversion_chart = (
+        summary
         .sort_values(
-            "verloop_percentage",
+            "conversie",
             ascending=False,
         )
         .head(10)
     )
 
     fig = px.bar(
-        worst_coupons,
-        y="coupon_code",
-        x="verloop_percentage",
-        orientation="h",
-        color="verloop_percentage",
+        conversion_chart,
+        x="coupon_code",
+        y="conversie",
+        color="conversie",
         color_continuous_scale=[
-            "#f5d6d0",
-            "#e8a697",
-            "#c9654b",
+            "#dce7e1",
+            "#084422",
         ],
     )
 
     fig.update_layout(
         height=450,
-        plot_bgcolor="white",
-        paper_bgcolor=BACKGROUND,
-        yaxis_title="",
-        xaxis_title="Verloop %",
+        xaxis_title="",
+        yaxis_title="Conversie %",
         coloraxis_showscale=False,
     )
 
@@ -640,94 +625,66 @@ with right:
         use_container_width=True,
     )
 
-st.markdown("<br>", unsafe_allow_html=True)
+with right:
 
-# ==========================================================
-# INSIGHTS
-# ==========================================================
+    st.subheader("Hoogste verloop")
 
-st.subheader("Belangrijkste inzichten")
-
-if not summary_filtered.empty:
-
-    best_coupon = summary_filtered.loc[
-        summary_filtered["conversie"].idxmax()
-    ]
-
-    highest_expiry = summary_filtered.loc[
-        summary_filtered["verloop_percentage"].idxmax()
-    ]
-
-    most_used = summary_filtered.loc[
-        summary_filtered["ingeleverd"].idxmax()
-    ]
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-
-        insight_card(
-            "🏆 Hoogste conversie",
-            (
-                f"{best_coupon['coupon_code']}<br>"
-                f"<span style='font-size:16px'>"
-                f"{best_coupon['conversie']:.1f}%"
-                f"</span>"
-            ),
+    expiry_chart = (
+        summary
+        .sort_values(
+            "verloop_percentage",
+            ascending=False,
         )
-
-    with col2:
-
-        insight_card(
-            "🔥 Hoogste omzet",
-            (
-                f"{most_used['coupon_code']}<br>"
-                f"<span style='font-size:16px'>"
-                f"{most_used['ingeleverd']:,.0f} gebruikt"
-                f"</span>"
-            ),
-        )
-
-    with col3:
-
-        insight_card(
-            "⚠ Beste ROI",
-            (
-                f"{highest_expiry['coupon_code']}<br>"
-                f"<span style='font-size:16px'>"
-                f"{highest_expiry['verloop_percentage']:.1f}%"
-                f"</span>"
-            ),
-        )
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-# ==========================================================
-# TOP COUPONS TABEL
-# ==========================================================
-
-st.subheader("Coupon prestaties")
-
-display_df = (
-    summary_filtered[
-        [
-            "coupon_code",
-            "campagne",
-            "verzonden",
-            "openstaand",
-            "ingeleverd",
-            "verlopen",
-            "discount",
-            "omzet",
-            "conversie",
-            "roi",
-        ]
-    ]
-    .sort_values(
-        "omzet",
-        ascending=False,
+        .head(10)
     )
-)
+
+    fig = px.bar(
+        expiry_chart,
+        x="coupon_code",
+        y="verloop_percentage",
+        color="verloop_percentage",
+        color_continuous_scale=[
+            "#f5d6d0",
+            "#c9654b",
+        ],
+    )
+
+    fig.update_layout(
+        height=450,
+        xaxis_title="",
+        yaxis_title="Verloop %",
+        coloraxis_showscale=False,
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+    )
+
+st.markdown("---")
+
+# ==========================================================
+# COUPON PRESTATIES TABEL
+# ==========================================================
+
+st.subheader("📋 Coupon prestaties")
+
+display_df = summary.copy()
+
+display_df = display_df[
+    [
+        "coupon_code",
+        "campagne",
+        "verzonden",
+        "openstaand",
+        "ingeleverd",
+        "verlopen",
+        "discount",
+        "omzet",
+        "conversie",
+        "roi",
+    ]
+]
 
 display_df = display_df.rename(
     columns={
@@ -740,7 +697,7 @@ display_df = display_df.rename(
         "discount": "Korting (€)",
         "omzet": "Omzet (€)",
         "conversie": "Conversie %",
-        "roi": "ROI"
+        "roi": "ROI",
     }
 )
 
@@ -756,24 +713,32 @@ display_df["ROI"] = (
 
 display_df["Korting (€)"] = (
     display_df["Korting (€)"]
-    .map(lambda x: f"€ {x:,.0f}")
+    .map(lambda x: f"€ {x:,.2f}")
 )
 
 display_df["Omzet (€)"] = (
     display_df["Omzet (€)"]
-    .map(lambda x: f"€ {x:,.0f}")
+    .map(lambda x: f"€ {x:,.2f}")
 )
+
+display_df = display_df.sort_values(
+    "Omzet (€)",
+    ascending=False,
+)
+
 st.dataframe(
     display_df,
     use_container_width=True,
     hide_index=True,
 )
 
+st.markdown("---")
+
 # ==========================================================
 # RUWE DATA
 # ==========================================================
 
-with st.expander("Bekijk ruwe data"):
+with st.expander("🔍 Bekijk ruwe data"):
 
     st.dataframe(
         df.sort_values(
@@ -785,11 +750,45 @@ with st.expander("Bekijk ruwe data"):
     )
 
 # ==========================================================
-# FOOTER
+# DATAKWALITEIT
 # ==========================================================
+
+with st.expander("🧪 Datacontrole"):
+
+    check_df = summary.copy()
+
+    check_df["Controle"] = (
+        check_df["openstaand"]
+        + check_df["ingeleverd"]
+        + check_df["verlopen"]
+    )
+
+    check_df["Afwijking"] = (
+        check_df["verzonden"]
+        - check_df["Controle"]
+    )
+
+    st.dataframe(
+        check_df[
+            [
+                "coupon_code",
+                "verzonden",
+                "Controle",
+                "Afwijking",
+            ]
+        ],
+        use_container_width=True,
+        hide_index=True,
+    )
 
 st.markdown("---")
 
+# ==========================================================
+# FOOTER
+# ==========================================================
+
 st.caption(
-    f"{len(df):,.0f} records geladen"
+    f"{len(df):,.0f} regels geladen | "
+    f"{summary['coupon_code'].nunique():,.0f} coupons | "
+    f"{summary['campagne'].nunique():,.0f} campagnes"
 )
