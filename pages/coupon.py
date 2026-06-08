@@ -138,40 +138,14 @@ def parse_numeric(series):
 def kpi_card(title, value):
 
     st.markdown(
-        f"""
-        <div class="kpi-card">
-
-            <div class="kpi-label">
-                {title}
-            </div>
-
-            <div class="kpi-value">
-                {value}
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
+        f"**{title}**\n\n### {value}"
     )
 
 
 def insight_card(title, value):
 
     st.markdown(
-        f"""
-        <div class="insight-card">
-
-            <div class="insight-title">
-                {title}
-            </div>
-
-            <div class="insight-value">
-                {value}
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
+        f"**{title}**\n\n{value}"
     )
 
 
@@ -556,7 +530,7 @@ with right:
             use_container_width=True,
         )
 
-st.markdown("<br>", unsafe_allow_html=True)
+st.markdown("")
 
 # ==========================================================
 # SAMENVATTING PER COUPON
@@ -652,7 +626,7 @@ with right:
         use_container_width=True,
     )
 
-st.markdown("<br>", unsafe_allow_html=True)
+st.markdown("")
 
 # ==========================================================
 # INSIGHTS
@@ -680,24 +654,27 @@ if not summary_filtered.empty:
 
         insight_card(
             "🏆 Hoogste conversie",
-            f"{best_coupon['coupon_code']}<br><span style='font-size:16px'>{best_coupon['conversie']:.1f}%</span>",
+            f"{best_coupon['coupon_code']}  
+{best_coupon['conversie']:.1f}%",
         )
 
     with col2:
 
         insight_card(
             "🔥 Hoogste omzet",
-            f"{highest_revenue['coupon_code']}<br><span style='font-size:16px'>€ {highest_revenue['omzet']:,.0f}</span>",
+            f"{highest_revenue['coupon_code']}  
+€ {highest_revenue['omzet']:,.0f}",
         )
 
     with col3:
 
         insight_card(
             "💡 Beste ROI",
-            f"{best_roi['coupon_code']}<br><span style='font-size:16px'>{best_roi['roi']:.2f}</span>",
+            f"{best_roi['coupon_code']}  
+{best_roi['roi']:.2f}",
         )
 
-st.markdown("<br>", unsafe_allow_html=True)
+st.markdown("")
 
 # ==========================================================
 # TOP COUPONS TABEL
