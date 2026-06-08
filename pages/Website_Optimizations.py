@@ -20,7 +20,7 @@ SHEET_URLS = {
     "products": f"{BASE_URL}/products",
     "search": f"{BASE_URL}/site_search",
     "pagespeed": f"{BASE_URL}/page_speed",
-    "funnel": f"{BASE_URL}/funnel",
+    "funnel": f"{BASE_URL}/checkout_funnel",
 }
 
 BRAND_GREEN = "#084422"
@@ -185,6 +185,9 @@ def add_missing_numeric_columns(df: pd.DataFrame, columns: list[str]) -> pd.Data
 
 def parse_date_column(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
+
+    if "datum" in df.columns and "date" not in df.columns:
+        df = df.rename(columns={"datum": "date"})
 
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"], errors="coerce", dayfirst=True)
@@ -390,11 +393,14 @@ def clean_funnel(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
     df = normalize_columns(df).rename(
-        columns={
-            "stap": "step",
-            "aantal": "count",
-        }
-    )
+
+    columns={
+        "stap": "step",
+        "aantal": "count",
+        "datum": "date",
+    }
+
+)
 
     possible_numeric_columns = [
         "count",
