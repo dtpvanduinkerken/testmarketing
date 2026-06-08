@@ -32,28 +32,23 @@ SOFT_RED = "#c76f6f"
 st.markdown(
     f"""
 <link rel="stylesheet" href="https://use.typekit.net/nap5xax.css">
-
 <style>
 html, body, [data-testid="stAppViewContainer"] {{
     background: {BACKGROUND};
     font-family: 'sofia-pro', sans-serif;
     color: {BRAND_GREEN};
 }}
-
 .block-container {{
     padding: 42px 56px 56px 56px;
     max-width: 1500px;
 }}
-
 #MainMenu, footer, header {{
     visibility: hidden;
 }}
-
 section[data-testid="stSidebar"] {{
     background: #ffffff;
     border-right: 1px solid rgba(8, 68, 34, 0.06);
 }}
-
 .vdk-main-title {{
     font-size: 42px;
     font-weight: 700;
@@ -61,7 +56,6 @@ section[data-testid="stSidebar"] {{
     margin: 0;
     line-height: 1.15;
 }}
-
 .vdk-subtitle {{
     color: {TEXT_MUTED};
     font-size: 15px;
@@ -69,7 +63,6 @@ section[data-testid="stSidebar"] {{
     max-width: 900px;
     line-height: 1.6;
 }}
-
 .vdk-divider {{
     width: 100%;
     height: 1px;
@@ -77,7 +70,6 @@ section[data-testid="stSidebar"] {{
     margin-top: 24px;
     margin-bottom: 34px;
 }}
-
 [data-testid="stMetric"] {{
     background: #ffffff;
     padding: 22px;
@@ -85,19 +77,16 @@ section[data-testid="stSidebar"] {{
     border: 1px solid {CARD_BORDER};
     box-shadow: 0 6px 18px rgba(8, 68, 34, 0.035);
 }}
-
 [data-testid="stMetric"] label {{
     color: {TEXT_MUTED} !important;
     font-size: 14px !important;
     font-weight: 500 !important;
 }}
-
 [data-testid="stMetricValue"] {{
     color: {BRAND_GREEN};
     font-size: 28px;
     font-weight: 700;
 }}
-
 .insight-card,
 div[data-testid="stPlotlyChart"],
 [data-testid="stDataFrame"] {{
@@ -107,25 +96,21 @@ div[data-testid="stPlotlyChart"],
     border: 1px solid {CARD_BORDER};
     box-shadow: 0 6px 18px rgba(8, 68, 34, 0.035);
 }}
-
 .insight-card {{
     padding: 22px;
     min-height: 150px;
 }}
-
 .insight-card h4 {{
     color: {BRAND_GREEN};
     margin: 0 0 8px 0;
     font-size: 18px;
 }}
-
 .insight-card p {{
     color: {TEXT_MUTED};
     margin: 0;
     line-height: 1.55;
     font-size: 14px;
 }}
-
 .space {{
     height: 34px;
 }}
@@ -393,14 +378,12 @@ def clean_funnel(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
     df = normalize_columns(df).rename(
-
-    columns={
-        "stap": "step",
-        "aantal": "count",
-        "datum": "date",
-    }
-
-)
+        columns={
+            "stap": "step",
+            "aantal": "count",
+            "datum": "date",
+        }
+    )
 
     possible_numeric_columns = [
         "count",
@@ -559,12 +542,27 @@ def create_funnel_data(funnel: pd.DataFrame) -> pd.DataFrame:
     if funnel.empty:
         return pd.DataFrame()
 
+    order = [
+        "Product bekeken",
+        "Toegevoegd aan winkelwagen",
+        "Checkout gestart",
+        "Aankopen",
+        "Aankoop",
+    ]
+
     if {"step", "count"}.issubset(funnel.columns):
         funnel_data = (
             funnel.groupby("step", as_index=False)["count"]
             .sum()
             .rename(columns={"step": "Stap", "count": "Aantal"})
         )
+
+        funnel_data["sort_order"] = funnel_data["Stap"].apply(
+            lambda value: order.index(value) if value in order else 999
+        )
+
+        funnel_data = funnel_data.sort_values("sort_order").drop(columns="sort_order")
+
     else:
         funnel_columns = ["view_item", "add_to_cart", "begin_checkout", "purchase"]
         available_columns = [column for column in funnel_columns if column in funnel.columns]
@@ -576,7 +574,7 @@ def create_funnel_data(funnel: pd.DataFrame) -> pd.DataFrame:
             "view_item": "Product bekeken",
             "add_to_cart": "Toegevoegd aan winkelwagen",
             "begin_checkout": "Checkout gestart",
-            "purchase": "Aankoop",
+            "purchase": "Aankopen",
         }
 
         funnel_data = pd.DataFrame(
@@ -704,11 +702,16 @@ def render_page_sessions_chart(
     settings: dict,
     height: int = 620,
 ) -> None:
-    required = {"landingpage", "sessions", "conversion_rate"}
+    required = {"landingpage", "sessions"}
 
     if landing.empty or not required.issubset(landing.columns):
         st.info("Geen bruikbare landingpage-data beschikbaar.")
         return
+
+    landing = landing.copy()
+
+    if "conversion_rate" not in landing.columns:
+        landing["conversion_rate"] = 0
 
     page_data = landing[landing["sessions"] >= settings["minimum_sessions"]].copy()
 
@@ -716,10 +719,17 @@ def render_page_sessions_chart(
         st.info("Geen pagina's boven het ingestelde minimum aantal sessies.")
         return
 
-    page_data = page_data.sort_values(
-        ["sessions", "conversion_rate"],
-        ascending=[False, True],
-    ).head(15)
+    page_data = (
+        page_data.groupby("landingpage", as_index=False)
+        .agg(
+            {
+                "sessions": "sum",
+                "conversion_rate": "mean",
+            }
+        )
+        .sort_values(["sessions", "conversion_rate"], ascending=[False, True])
+        .head(15)
+    )
 
     fig = px.bar(
         page_data,
@@ -802,6 +812,9 @@ def render_pages_tab(landing: pd.DataFrame, settings: dict) -> None:
     render_page_sessions_chart(landing, settings)
 
     if landing.empty:
+        return
+
+    if "sessions" not in landing.columns:
         return
 
     page_data = landing[landing["sessions"] >= settings["minimum_sessions"]].copy()
