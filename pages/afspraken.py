@@ -1,9 +1,7 @@
-import io
 from datetime import datetime
 
 import pandas as pd
 import plotly.express as px
-import requests
 import streamlit as st
 
 
@@ -109,14 +107,6 @@ h3 {
 st.markdown(STYLE, unsafe_allow_html=True)
 
 
-SHEET_ID = "1ahFKg-OOJaczjYx2dt4USJzx54nCB4olWB-cWDp4yzA"
-
-SHEET_URL = (
-    f"https://docs.google.com/spreadsheets/d/{SHEET_ID}"
-    "/export?format=csv&gid=0"
-)
-
-
 def format_number(value: float | int) -> str:
     if pd.isna(value):
         return "-"
@@ -124,23 +114,36 @@ def format_number(value: float | int) -> str:
     return f"{int(value):,}".replace(",", ".")
 
 
+from sqlalchemy import create_engine
+
+engine = create_engine(
+    "mysql+pymysql://avnadmin:AVNS_IOr05TcV_n9lMLmM4do@vdk-dashboard-vdk-marketing.i.aivencloud.com:25406/dashboards",
+    connect_args={"ssl": {}}
+)
+
 @st.cache_data(ttl=300)
 def load_data() -> pd.DataFrame:
     try:
-        response = requests.get(SHEET_URL, timeout=20)
-        response.raise_for_status()
 
-        df = pd.read_csv(io.StringIO(response.text))
+        df = pd.read_sql(
+            "SELECT * FROM afspraken",
+            engine
+        )
+
         df.columns = df.columns.str.strip()
+
+        df.columns = (
+    df.columns
+    .str.strip()
+    .str.lower()
+    .str.replace(" ", "_")
+    .str.replace("-", "_")
+)
 
         return df
 
-    except requests.RequestException as error:
-        st.error(f"Kan data niet laden: {error}")
-        return pd.DataFrame()
-
     except Exception as error:
-        st.error(f"Onverwachte fout: {error}")
+        st.error(f"Kan data niet laden: {error}")
         return pd.DataFrame()
 
 
@@ -148,22 +151,22 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
 
-    required_columns = {"Datum", "Is geannuleerd"}
+    required_columns = {"datum", "is_geannuleerd"}
 
     if not required_columns.issubset(df.columns):
-        st.error("De kolommen `Datum` en `Is geannuleerd` ontbreken.")
+        st.error("De kolommen `datum` en `Is geannuleerd` ontbreken.")
         return pd.DataFrame()
 
     df = df.copy()
 
-    df["Datum"] = pd.to_datetime(
-        df["Datum"],
+    df["datum"] = pd.to_datetime(
+        df["datum"],
         dayfirst=True,
         errors="coerce",
     )
 
-    df["Is geannuleerd"] = (
-        df["Is geannuleerd"]
+    df["is_geannuleerd"] = (
+        df["is_geannuleerd"]
         .astype(str)
         .str.strip()
         .str.lower()
@@ -183,8 +186,8 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
 
 def prepare_weekly_data(df: pd.DataFrame) -> pd.DataFrame:
     df_active = (
-        df[df["Is geannuleerd"] == False]
-        .dropna(subset=["Datum"])
+        df[df["is_geannuleerd"] == False]
+        .dropna(subset=["datum"])
         .copy()
     )
 
@@ -192,8 +195,8 @@ def prepare_weekly_data(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
 
     df_active["Week_start"] = (
-        df_active["Datum"]
-        - pd.to_timedelta(df_active["Datum"].dt.weekday, unit="d")
+        df_active["datum"]
+        - pd.to_timedelta(df_active["datum"].dt.weekday, unit="d")
     )
 
     weekly = (
@@ -222,7 +225,7 @@ def prepare_weekly_data(df: pd.DataFrame) -> pd.DataFrame:
 
 def calculate_kpis(df: pd.DataFrame, weekly: pd.DataFrame) -> dict[str, float]:
     total = len(df)
-    canceled = int(df["Is geannuleerd"].sum())
+    canceled = int(df["is_geannuleerd"].sum())
     cancel_rate = round((canceled / total) * 100, 1) if total else 0
 
     if weekly.empty:
@@ -356,12 +359,12 @@ def render_week_chart(weekly: pd.DataFrame) -> None:
 
 def render_department_chart(df: pd.DataFrame) -> None:
     df_active = (
-        df[df["Is geannuleerd"] == False]
-        .dropna(subset=["Datum"])
+        df[df["is_geannuleerd"] == False]
+        .dropna(subset=["datum"])
         .copy()
     )
 
-    if df_active.empty or "Dienst-categorie" not in df_active.columns:
+    if df_active.empty or "dienst_categorie" not in df_active.columns:
         st.info("Geen afdelingsdata beschikbaar.")
         return
 
@@ -369,7 +372,7 @@ def render_department_chart(df: pd.DataFrame) -> None:
 
     department_data = (
         df_active
-        .groupby("Dienst-categorie")
+        .groupby("dienst_categorie")
         .size()
         .reset_index(name="Aantal")
         .sort_values("Aantal", ascending=False)
@@ -377,7 +380,7 @@ def render_department_chart(df: pd.DataFrame) -> None:
 
     fig = px.pie(
         department_data,
-        names="Dienst-categorie",
+        names="dienst_categorie",
         values="Aantal",
         hole=0.55,
         color_discrete_sequence=[
