@@ -1,10 +1,16 @@
-import io
+
 from datetime import datetime
 
 import pandas as pd
 import plotly.express as px
-import requests
 import streamlit as st
+from sqlalchemy import create_engine
+
+engine = create_engine(
+    "mysql+pymysql://avnadmin:AVNS_IOr05TcV_n9lMLmM4do@vdk-dashboard-vdk-marketing.i.aivencloud.com:25406/dashboards",
+    connect_args={"ssl": {}}
+)
+
 
 
 st.set_page_config(
@@ -115,12 +121,6 @@ h3 {
 </style>
 """
 
-SHEET_ID = "1seQjiFaLzEm7PZ2vTDeylSZKEXGqDl6FHe2l1nVPnfg"
-
-SHEET_URL = (
-    f"https://docs.google.com/spreadsheets/d/{SHEET_ID}"
-    "/export?format=csv&gid=0"
-)
 
 ALL_CAMPAIGNS_LABEL = "Alle campagnes"
 
@@ -133,45 +133,29 @@ NUMERIC_COLUMNS = [
 ]
 
 
-@st.cache_data(ttl=600)
-def load_data() -> pd.DataFrame:
-    try:
-        response = requests.get(SHEET_URL, timeout=20)
-        response.raise_for_status()
+@st.cache_data(ttl=3600)
+def load_data():
 
-        df = pd.read_csv(io.StringIO(response.text))
+    query = """
+    SELECT *
+    FROM nieuwsbrieven
+    """
 
-    except requests.RequestException as error:
-        st.error(f"Kan data niet laden: {error}")
-        return pd.DataFrame()
+    df = pd.read_sql(query, engine)
 
-    except Exception as error:
-        st.error(f"Onverwachte fout: {error}")
-        return pd.DataFrame()
+    df.columns = df.columns.str.lower()
 
-    df.columns = (
-        df.columns
-        .str.strip()
-        .str.lower()
-        .str.replace(" ", "_", regex=False)
-        .str.replace("-", "_", regex=False)
+    df["date"] = pd.to_datetime(
+        df["date"],
+        errors="coerce"
     )
 
-    for column in NUMERIC_COLUMNS:
-        if column in df.columns:
-            df[column] = pd.to_numeric(
-                df[column]
-                .astype(str)
-                .str.replace("\u00a0", "", regex=False)
-                .str.replace(" ", "", regex=False)
-                .str.replace(",", ".", regex=False)
-                .str.replace("%", "", regex=False)
-                .str.strip(),
-                errors="coerce",
+    for col in NUMERIC_COLUMNS:
+        if col in df.columns:
+            df[col] = pd.to_numeric(
+                df[col],
+                errors="coerce"
             ).fillna(0)
-
-    if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"], errors="coerce")
 
     return df
 
@@ -345,9 +329,15 @@ def render_chart(df: pd.DataFrame) -> None:
     if chart_data.empty:
         return
 
+    chart_data["open_rate"] = (
+        chart_data["opens"]
+        .div(chart_data["sent"].replace(0, pd.NA))
+        .fillna(0)
+        * 100
+    )
+
     chart_data["click_rate"] = (
         chart_data["clicks"]
-        .astype(float)
         .div(chart_data["sent"].replace(0, pd.NA))
         .fillna(0)
         * 100
@@ -385,8 +375,8 @@ def render_chart(df: pd.DataFrame) -> None:
 def add_space() -> None:
     st.markdown('<div class="space"></div>', unsafe_allow_html=True)
 
+def main():
 
-def main() -> None:
     st.markdown(STYLE, unsafe_allow_html=True)
 
     render_header()
@@ -400,7 +390,7 @@ def main() -> None:
     filtered_df = get_campaign_filter(df)
 
     if filtered_df.empty:
-        st.warning("Geen data beschikbaar voor de geselecteerde campagne.")
+        st.warning("Geen data beschikbaar.")
         return
 
     add_space()
