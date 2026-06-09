@@ -2,6 +2,8 @@ import pandas as pd
 import plotly.express as px
 import requests
 import streamlit as st
+from sqlalchemy import create_engine
+import pymysql
 
 # ==========================================================
 # CONFIG
@@ -14,8 +16,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-SHEET_ID = "199ipIJJARO8UjXjMcay33DNXz6mpui-oA2F43SE5Weg"
-COUPON_URL = f"https://opensheet.elk.sh/{SHEET_ID}/coupons"
 
 BRAND_GREEN = "#084422"
 BACKGROUND = "#f7f3ec"
@@ -157,17 +157,32 @@ def apply_chart_layout(fig, height=420, x_title=None, y_title=None):
     return fig
 
 
-@st.cache_data(ttl=300, show_spinner="Data laden...")
-def load_data() -> pd.DataFrame:
-    response = requests.get(COUPON_URL, timeout=20)
-    response.raise_for_status()
+from sqlalchemy import create_engine
 
-    data = response.json()
+engine = create_engine(
+    "mysql+pymysql://avnadmin:AVNS_IOr05TcV_n9lMLmM4do@vdk-dashboard-vdk-marketing.i.aivencloud.com:25406/dashboards"
+)
 
-    if not data:
-        return pd.DataFrame()
+@st.cache_data(ttl=300)
+def load_data():
 
-    return normalize_columns(pd.DataFrame(data))
+    query = """
+    SELECT
+        datum,
+        coupon_code,
+        campagne,
+        verzonden,
+        openstaand,
+        ingeleverd,
+        verlopen,
+        discount,
+        omzet
+    FROM coupons
+    """
+
+    df = pd.read_sql(query, engine)
+
+    return normalize_columns(df)
 
 
 def clean_data(df: pd.DataFrame) -> pd.DataFrame:
