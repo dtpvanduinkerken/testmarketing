@@ -9,3 +9,6 @@ google-auth-oauthlib
 google-auth-httplib2
 google-analytics-data
 google-api-python-client
+sqlalchemy
+pymysql
+cryptography
